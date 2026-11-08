@@ -371,8 +371,12 @@
     const az = w.wall_azimuth_deg != null ? w.wall_azimuth_deg : c.camera_azimuth_deg;
     const tilt = c.camera_elevation_deg;
     ui.view.innerHTML = "";
-    if (w.photo && w.photo.url) {   // whole photo (window frame stays visible) over a blurred, cropped copy
-      ui.view.innerHTML = `<img class="ck-ambient" src="${w.photo.url}" alt=""><img class="ck-photo" src="${w.photo.url}" alt="">`;
+    ui.photo = null;
+    if (w.photo && w.photo.url) {   // photo is drawn into a canvas together with the real sky
+      const img = new Image(); img.crossOrigin = "anonymous";
+      img.onload = () => { if (ui && ui.photo === img) renderSky(); };
+      img.src = w.photo.url; ui.photo = img;
+      ui.view.innerHTML = '<canvas class="ck-sky"></canvas>';
     }
     else ui.view.innerHTML = '<div class="nosignal">NO SIGNAL</div>';
     const floor = Number(document.getElementById("floor").value) || 0;
@@ -381,12 +385,40 @@
     ui.q("#ck-tilt").textContent = tilt != null ? `${tilt >= 0 ? "+" : ""}${Math.round(tilt)}°` : "--";
     ui.q("#ck-alt").textContent = `DECK ${floor} · ~${Math.max(0, floor * 3 + 1.5).toFixed(0)} M`;
     ui.q("#ck-pos").textContent = `${w.lat.toFixed(5)}N ${w.lon.toFixed(5)}E`;
-    ui.q("#ck-src").textContent = w.wall_azimuth_deg != null ? "HDG FROM HULL (MAP)" : c.camera_azimuth_deg != null ? "HDG FROM PHONE COMPASS" : "HDG UNKNOWN";
+    const vv = viewOf(w);
+    ui.q("#ck-src").textContent = vv.az == null ? "HDG UNKNOWN" : `VIEW ${Math.round(vv.az)}° (${vv.azSrc}) · ${vv.el >= 0 ? "+" : ""}${Math.round(vv.el)}° (${vv.elSrc})`;
     drawTape(az);
     // horizon line tilts with the recorded camera elevation
     ui.q("#ck-horizon").style.transform = `translateY(${tilt != null ? Math.max(-40, Math.min(40, tilt * 2.2)) : 0}%)`;
     ui.qa(".ck-win").forEach((b, k) => b.classList.toggle("on", k === i));
   }
+  // ---------- real sky in the window ----------
+  function skyTime() { return new Date(Date.now() + (ui ? ui.timeOffsetH : 0) * 3600000); }
+  function viewOf(w) {
+    const c = w.capture || {};
+    // the phone's own reading is the true direction of the photo; the wall direction is the fallback
+    const az = c.camera_azimuth_deg != null ? c.camera_azimuth_deg : w.wall_azimuth_deg;
+    const el = c.camera_elevation_deg != null ? c.camera_elevation_deg : 5;
+    return { az, el, azSrc: c.camera_azimuth_deg != null ? "PHONE" : "HULL", elSrc: c.camera_elevation_deg != null ? "PHONE" : "EST." };
+  }
+  function renderSky() {
+    if (!ui || !ui.photo || !ui.photo.naturalWidth) return;
+    const cv = ui.view.querySelector(".ck-sky"); if (!cv) return;
+    const r = ui.view.getBoundingClientRect(), dpr = Math.min(2, window.devicePixelRatio || 1);
+    cv.width = Math.max(320, Math.round(r.width * dpr)); cv.height = Math.max(200, Math.round(r.height * dpr));
+    const w = cur.windows[active], v = viewOf(w), t = skyTime();
+    if (v.az == null || !window.SpaceshipSky) { cv.getContext("2d").drawImage(ui.photo, 0, 0, cv.width, cv.height); return; }
+    const info = SpaceshipSky.render(cv, ui.photo, { lat: w.lat, lon: w.lon, az: v.az, el: v.el, time: t, mode: ui.skyMode });
+    const named = info && info.inView.filter((x) => x.type !== "constellation").map((x) => x.name);
+    const cons = info && info.inView.filter((x) => x.type === "constellation").map((x) => x.name);
+    ui.q("#ck-sky-info").textContent = ui.skyMode === "photo" ? "SKY: PHOTO" :
+      (cons && cons.length ? cons.slice(0, 3).join(" · ").toUpperCase() : "NO CONSTELLATION IN VIEW") +
+      (named && named.length ? " ★ " + named.slice(0, 3).join(", ") : "");
+    ui.q("#ck-sun").textContent = info && info.sunAlt != null ? `SUN ${info.sunAlt >= 0 ? "+" : ""}${Math.round(info.sunAlt)}° ${info.sunAlt > 0 ? "DAY" : info.sunAlt > -12 ? "TWILIGHT" : "NIGHT"}` : "";
+    ui.q("#ck-time").textContent = t.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    ui.q("#ck-date").textContent = ui.timeOffsetH ? `${ui.timeOffsetH > 0 ? "+" : ""}${ui.timeOffsetH} H · ${t.toLocaleDateString()}` : "NOW · LIVE";
+  }
+
   function drawTape(az) {
     const tape = ui.q("#ck-tape"); tape.innerHTML = "";
     if (az == null) { tape.innerHTML = '<span class="tk lbl" style="left:50%">NO HEADING</span>'; return; }
@@ -464,11 +496,15 @@
           <div class="ck-tape" id="ck-tape"></div>
           <div class="ck-reticle"><span></span></div>
           <div class="ck-side ck-left"><b id="ck-name">–</b><span>HDG <i id="ck-hdg">–</i></span><span>TILT <i id="ck-tilt">–</i></span></div>
-          <div class="ck-side ck-right"><span id="ck-alt">–</span><span id="ck-pos">–</span><span id="ck-src">–</span></div>
+          <div class="ck-side ck-right"><span id="ck-alt">–</span><span id="ck-pos">–</span><span id="ck-src">–</span><span id="ck-sun"></span></div>
+          <div class="ck-skyinfo" id="ck-sky-info"></div>
           <div class="ck-dash">
-            <div class="ck-panel ck-wins"></div>
+            <div class="ck-panel ck-wins"><button class="ck-mode" type="button" title="Real stars / original photo">★ SPACE</button></div>
             <canvas class="ck-radar" width="120" height="120"></canvas>
-            <div class="ck-panel ck-clock"><span id="ck-time">--:--</span><small>SHIP TIME</small></div>
+            <div class="ck-panel ck-clock"><div class="row" style="gap:6px;align-items:baseline"><span id="ck-time">--:--</span>
+              <button class="ck-now" type="button">NOW</button></div>
+              <input class="ck-slider" type="range" min="-12" max="12" step="0.25" value="0" aria-label="Time offset in hours">
+              <small id="ck-date">NOW · LIVE</small></div>
           </div>
         </div>
       </div>`;
@@ -488,8 +524,16 @@
       ship.ports.forEach((p) => { const d = Math.hypot(p.x - x, p.y - y); if (d < bd) { bd = d; best = p.i; } });
       if (best >= 0) selectWindow(best, st);
     });
-    const tick = () => { if (ui) { ui.q("#ck-time").textContent = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); } };
-    tick(); ui.clock = setInterval(tick, 10000);
+    ui.timeOffsetH = 0; ui.skyMode = "space";
+    const modeBtn = q(".ck-mode");
+    modeBtn.addEventListener("click", () => { ui.skyMode = ui.skyMode === "space" ? "photo" : "space";
+      modeBtn.textContent = ui.skyMode === "space" ? "★ SPACE" : "▣ PHOTO"; renderSky(); });
+    const slider = q(".ck-slider");
+    slider.addEventListener("input", () => { ui.timeOffsetH = Number(slider.value); renderSky(); });
+    q(".ck-now").addEventListener("click", () => { slider.value = 0; ui.timeOffsetH = 0; renderSky(); });
+    ui.clock = setInterval(renderSky, 30000);                 // the sky turns: refresh every 30 s
+    ui.onResize = () => renderSky(); window.addEventListener("resize", ui.onResize);
+    if (window.SpaceshipSky) SpaceshipSky.load().then(renderSky);
     ship = buildShip(st); initStars(); lasers = []; active = 0;
     selectWindow(0, st);
     // origin inset: the real building from above with its outline – stays visible during flight
@@ -504,7 +548,12 @@
     q(".lv-replay").addEventListener("click", startIntro);
     t0 = performance.now(); cancelAnimationFrame(raf); raf = requestAnimationFrame(frame);
   }
-  function unmount() { cancelAnimationFrame(raf); if (ui && ui.clock) clearInterval(ui.clock); ui = null; }
+  function unmount() {
+    cancelAnimationFrame(raf);
+    if (ui && ui.clock) clearInterval(ui.clock);
+    if (ui && ui.onResize) window.removeEventListener("resize", ui.onResize);
+    ui = null;
+  }
 
   window.SpaceshipLaunch = { mount, unmount };
 })();

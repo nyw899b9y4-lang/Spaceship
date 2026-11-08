@@ -18,3 +18,7 @@ Turn an apartment into a spaceship: its real outline, its windows, and the view 
 - `backend/supabase-apartments.sql` – `apartments` table; photos in the `photos` bucket under `<apartment id>/window-<n>.jpg`
 - `backend/supabase-viewer.sql` – `get_spaceship(id)`: opens one saved ship by its link `…/Spaceship/?ship=<id>` (table and bucket stay unlistable)
 - Imagery © swisstopo (CH) / © Esri (elsewhere, non-commercial) · Buildings & search © OpenStreetMap contributors
+
+## Real sky
+
+In the cockpit (★ SPACE) the open sky in each window photo is replaced by the real sky in that direction: ~5000 stars to magnitude 6 with constellations (d3-celestial data, BSD-3), Sun, Moon and planets (astronomy-engine, MIT), for the building's position and the chosen time (slider ±12 h). View direction = phone compass at the shot (fallback: wall direction), tilt = phone tilt, field of view ≈ phone main camera (53° × 67° portrait).
