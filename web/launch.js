@@ -188,14 +188,14 @@
   // render the real satellite image, rotated/scaled exactly like the ship, into a hi-res canvas
   // Render the real satellite image, rotated/scaled exactly like the ship, into a hi-res canvas.
   // F = how much wider than the ship view the canvas reaches (F=8 → 8× wider, using coarser tiles).
-  function buildGround(st, sh, F = 1) {
-    const cv = document.createElement("canvas"); cv.width = W * K; cv.height = H * K;
+  function buildGround(st, sh, F = 1, R = 1) {        // R = extra canvas resolution
+    const cv = document.createElement("canvas"); cv.width = W * K * R; cv.height = H * K * R;
     const g = cv.getContext("2d"); g.fillStyle = "#1a1f1a"; g.fillRect(0, 0, cv.width, cv.height);
     const lat0 = st.address.lat, ch = inCH(lat0, st.address.lon);
     const viewM = W / sh.scale, tileM = (40075016 * Math.cos(lat0 * D2R)) / 2 ** 19;
     const zDetail = Math.max(15, Math.min(ch ? 20 : 19, Math.round(19 + Math.log2(tileM / (viewM / 3)))));
-    const z = Math.max(12, zDetail - Math.round(Math.log2(F)));
-    const toCanvas = ([px, py]) => [(W / 2 + (px - W / 2) / F) * K, (H / 2 + (py - H / 2) / F) * K];
+    const z = Math.max(12, zDetail - Math.round(Math.log2(F / R)));
+    const toCanvas = ([px, py]) => [(W / 2 + (px - W / 2) / F) * K * R, (H / 2 + (py - H / 2) / F) * K * R];
     const corners = [[0, 0], [W, 0], [0, H], [W, H]].map(([x, y]) => sh.pxToLL(W / 2 + (x - W / 2) * F, H / 2 + (y - H / 2) * F));
     const gx = corners.map(([la, lo]) => lon2g(lo, z)), gy = corners.map(([la]) => lat2g(la, z));
     const tx0 = Math.floor(Math.min(...gx) / 256), tx1 = Math.floor(Math.max(...gx) / 256);
@@ -257,11 +257,12 @@
     const sg = sil.getContext("2d"); sg.drawImage(ship.sprite, 0, 0); sg.globalCompositeOperation = "source-in";
     sg.fillStyle = "#000"; sg.fillRect(0, 0, W, H); intro.silhouette = sil;
     const detailP = ui.groundP || (ui.groundP = buildGround(cur, ship, 1));
-    const wideP = ui.wideP || (ui.wideP = buildGround(cur, ship, WIDE));
-    Promise.all([detailP, wideP]).then(([c, w]) => {
+    const midP = ui.midP || (ui.midP = buildGround(cur, ship, 3, 1.5));
+    const wideP = ui.wideP || (ui.wideP = buildGround(cur, ship, WIDE, 2));
+    Promise.all([detailP, midP, wideP]).then(([c, mid, w]) => {
       if (!ship.reskinned) { ship.reskinned = true; ship.reskin(c); }
       if (!intro) return;
-      intro.ground = c; intro.groundSoft = feather(c); intro.wide = w; intro.ready = true;
+      intro.ground = c; intro.groundSoft = feather(c); intro.mid = feather(mid); intro.wide = w; intro.ready = true;
     });
   }
   // draw a layer that covers `extent`× the ship view, at camera magnification m, centred
@@ -290,7 +291,8 @@
       if (m < 0.999) {
         g.imageSmoothingEnabled = true;
         if (it.wide) drawLayer(g, it.wide, WIDE, m, groundAlpha);
-        drawLayer(g, it.groundSoft, 1, m, groundAlpha * Math.min(1, (m - 0.12) / 0.2));
+        if (it.mid) drawLayer(g, it.mid, 3, m, groundAlpha * Math.max(0, Math.min(1, (m - 1 / WIDE) / 0.08)));
+        drawLayer(g, it.groundSoft, 1, m, groundAlpha * Math.max(0, Math.min(1, (m - 0.2) / 0.15)));
       } else {
         const block = Math.max(1, Math.round(1 + pix * (K - 1)));          // pixelate 1 → K
         const tw = Math.ceil(CW / block), th = Math.ceil(CH / block);
