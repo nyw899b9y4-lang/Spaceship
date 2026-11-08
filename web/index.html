@@ -72,7 +72,7 @@
 
   <section class="card" id="photo-card">
     <div class="row">
-      <div><h2>📷 Photo or file</h2><p>Take a photo or choose an image.</p></div>
+      <div><h2>📷 Photo or file</h2><p>Take a photo or choose an image. Its GPS position is read if the photo contains one.</p></div>
       <label class="btn" for="photo-input">Choose</label>
       <input id="photo-input" type="file" accept="image/*">
     </div>
@@ -94,11 +94,12 @@
 </main>
 
 <script src="config.js"></script>
+<script src="vendor/exifr-7.1.3.full.umd.js"></script>
 <script>
 const cfg = window.SPACESHIP_CONFIG || {};
 const backendReady = Boolean(cfg.SUPABASE_URL && cfg.SUPABASE_KEY);
 const $ = (id) => document.getElementById(id);
-const state = { location: null, motion: null, photo: null };
+const state = { location: null, motion: null, photo: null, photoMeta: null };
 const r = (v, d = 2) => (v == null || isNaN(v) ? null : Number(v.toFixed(d)));
 
 function setNotice(el, type, text) { el.className = "notice " + type; el.textContent = text; }
@@ -185,6 +186,25 @@ $("motion-btn").addEventListener("click", async () => {
 });
 
 // ---------- Photo ----------
+async function readPhotoMeta(file) {
+  if (!window.exifr) return null;
+  try {
+    const t = await exifr.parse(file, { gps: true, tiff: true, exif: true, xmp: false, icc: false, iptc: false });
+    if (!t) return null;
+    const pos = await exifr.gps(file).catch(() => null);   // decimal latitude/longitude
+    if (pos) { t.latitude = pos.latitude; t.longitude = pos.longitude; }
+    const meta = {
+      lat: Number.isFinite(t.latitude) ? Number(t.latitude.toFixed(7)) : null,
+      lon: Number.isFinite(t.longitude) ? Number(t.longitude.toFixed(7)) : null,
+      altitude_m: Number.isFinite(t.GPSAltitude) ? r(t.GPSAltitudeRef === 1 ? -t.GPSAltitude : t.GPSAltitude, 1) : null,
+      direction_deg: Number.isFinite(t.GPSImgDirection) ? r(t.GPSImgDirection, 1) : null,
+      taken: t.DateTimeOriginal instanceof Date ? t.DateTimeOriginal.toISOString() : null,
+      camera: [t.Make, t.Model].filter(Boolean).join(" ") || null,
+    };
+    if (meta.lat == null || meta.lon == null) { meta.lat = meta.lon = null; }
+    return meta;
+  } catch (e) { return null; }
+}
 async function shrinkImage(file, maxSide = 1600) {
   const bmp = await createImageBitmap(file, { imageOrientation: "from-image" }).catch(() => null);
   if (!bmp) return file; // unsupported format: send as is
@@ -197,15 +217,33 @@ async function shrinkImage(file, maxSide = 1600) {
 $("photo-input").addEventListener("change", async (e) => {
   const file = e.target.files[0]; if (!file) return;
   if (file.size > 25 * 1024 * 1024) { $("photo-data").textContent = "File is too large (max 25 MB)."; return; }
-  $("photo-data").textContent = "Preparing…";
-  const blob = await shrinkImage(file);
+  $("photo-data").textContent = "Reading photo…";
+  state.photoMeta = await readPhotoMeta(file);
+  const blob = await shrinkImage(file);   // the shrunk copy carries no metadata
   state.photo = { blob, name: file.name };
   $("photo-preview").src = URL.createObjectURL(blob); $("photo-preview").hidden = false;
-  $("photo-data").textContent = `${file.name} · ${(blob.size / 1024).toFixed(0)} KB`;
+  const m = state.photoMeta || {};
+  let info = `${file.name} · ${(blob.size / 1024).toFixed(0)} KB`;
+  if (m.lat != null) {
+    const maps = `https://www.openstreetmap.org/?mlat=${m.lat}&mlon=${m.lon}#map=17/${m.lat}/${m.lon}`;
+    info += `<br>📍 Photo taken at <a style="color:var(--accent)" target="_blank" rel="noopener" href="${maps}">${m.lat.toFixed(5)}, ${m.lon.toFixed(5)}</a>` +
+            (m.altitude_m != null ? ` · altitude ${Math.round(m.altitude_m)} m` : "");
+  } else {
+    info += `<br><span style="color:var(--warn)">No GPS position in this photo</span> – phones often remove it when uploading. Use 📍 Location above to add where you are now.`;
+  }
+  if (m.taken) info += `<br>🕒 Taken ${new Date(m.taken).toLocaleString()}`;
+  if (m.camera) info += ` · ${m.camera}`;
+  $("photo-data").innerHTML = info;
   refreshSend();
 });
 
 // ---------- Send ----------
+// "device": where the visitor is now (📍 button); "photo": where the photo was taken (from its metadata)
+function locationPayload() {
+  const photo = state.photo && state.photoMeta && (state.photoMeta.lat != null || state.photoMeta.taken) ? state.photoMeta : null;
+  if (!state.location && !photo) return null;
+  return { device: state.location, photo };
+}
 function headers(extra) {
   const h = { apikey: cfg.SUPABASE_KEY, ...extra };
   if (cfg.SUPABASE_KEY.startsWith("eyJ")) h.Authorization = "Bearer " + cfg.SUPABASE_KEY; // legacy anon JWT key
@@ -216,7 +254,7 @@ $("send").addEventListener("click", async () => {
   const note = $("note").value.trim() || null;
   if (!backendReady) {
     setNotice(msg, "info", "Preview mode – this would be sent: " +
-      JSON.stringify({ location: state.location, motion: state.motion ? `${state.motion.sample_count} readings` : null,
+      JSON.stringify({ location: locationPayload(), motion: state.motion ? `${state.motion.sample_count} readings` : null,
                        photo: state.photo ? state.photo.name : null, note }));
     return;
   }
@@ -231,7 +269,7 @@ $("send").addEventListener("click", async () => {
     }
     const res = await fetch(`${cfg.SUPABASE_URL}/rest/v1/${cfg.TABLE}`, {
       method: "POST", headers: headers({ "Content-Type": "application/json", Prefer: "return=minimal" }),
-      body: JSON.stringify({ location: state.location, motion: state.motion, photo_path, note }) });
+      body: JSON.stringify({ location: locationPayload(), motion: state.motion, photo_path, note }) });
     if (!res.ok) throw new Error("saving failed (" + res.status + ")");
     setNotice(msg, "ok", "✓ Sent – thank you!");
   } catch (e) {

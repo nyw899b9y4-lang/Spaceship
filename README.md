@@ -6,7 +6,7 @@ Share data from any device – phone, tablet or computer – through the browser
 
 **[🚀 nyw899b9y4-lang.github.io/Spaceship](https://nyw899b9y4-lang.github.io/Spaceship/)**
 
-Visitors can send their **location**, **motion sensor readings** and a **photo**. Each is optional, asked for with the device's own permission prompt, and sent only after they agree.
+Visitors can send their **location**, **motion sensor readings** and a **photo** (its GPS position is read from the photo metadata when present). Each is optional, asked for with the device's own permission prompt, and sent only after they agree.
 
 ## Environment
 
