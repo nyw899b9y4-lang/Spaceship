@@ -285,7 +285,7 @@ function initMap(lat, lon) {
   map.setView([lat, lon], 19);
   renderWindows();
 }
-let buildingsNearby = [];
+let buildingsNearby = [], outlineLoading = false;
 // Ask several public Overpass (OpenStreetMap) servers at once and take the first good answer
 const OVERPASS = ["https://overpass-api.de/api/interpreter", "https://overpass.private.coffee/api/interpreter",
                   "https://maps.mail.ru/osm/tools/overpass/api/interpreter"];
@@ -304,7 +304,8 @@ async function overpass(q) {
   } finally { clearTimeout(timer); }
 }
 async function loadBuildings(lat, lon) {
-  $("map-hint").innerHTML = "Loading the building outline… <span class='muted'>(can take up to half a minute)</span>";
+  outlineLoading = true;
+  $("map-hint").innerHTML = "⏳ Loading the building outline… <span class='muted'>(can take up to half a minute)</span>";
   const q = `[out:json][timeout:20];way["building"](around:60,${lat},${lon});out geom tags;`;
   try {
     const j = await overpass(q);
@@ -321,6 +322,7 @@ async function loadBuildings(lat, lon) {
     const cx = ring.reduce((s, q) => s + q[0], 0) / ring.length, cy = ring.reduce((s, q) => s + q[1], 0) / ring.length;
     const d = Math.hypot(p[0] - cx, p[1] - cy); if (d < bestD) { bestD = d; pick = b; }
   }
+  outlineLoading = false;
   drawBuildings(); if (pick) selectBuilding(pick);
   else $("map-hint").innerHTML = "No building outline found here. Zoom in and <b>tap your windows</b> where they are on the image – you'll set the direction with the phone's compass in the next step.";
 }
@@ -344,6 +346,7 @@ function selectBuilding(b) {
   $("map-hint").innerHTML = "Blue = your building (tap another outline if it's wrong).<br><b>Tap on the outline where each of your windows is.</b> The arrow shows the direction it looks out.";
 }
 function onMapClick(e) {
+  if (outlineLoading) { flashHint("Please wait until the building outline has loaded."); return; }
   const { lat, lng } = e.latlng;
   let w;
   if (state.building) {
