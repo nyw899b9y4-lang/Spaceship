@@ -28,9 +28,13 @@ Or, without opening the project: download `HelloWorld-iOS-Simulator.zip` from th
 
 With a free Apple ID the app stays installed for 7 days; with a paid Apple Developer membership you can share it via TestFlight or the App Store.
 
-## 🤖 Android emulator
+## 🤖 Android: fast development loop
 
-Install Android Studio, open this folder, create a virtual device under *Device Manager* and press **▶ Run**.
+The Android UI is written in **Jetpack Compose** (`app/src/main/kotlin/.../MainActivity.kt`).
+
+1. **Live preview** – open `MainActivity.kt` in Android Studio and switch to *Split* view: the `@Preview` renders the screen as you type, no emulator needed.
+2. **Emulator** – create a virtual device under *Device Manager* and press **▶ Run**; small changes can be pushed with *Apply Changes* without restarting.
+3. **CI check** – every push builds the APK, runs it in an Android emulator on GitHub and attaches `android-emulator-screenshot.png` to the release, so you can see that each change still launches.
 
 ## How it's built
 
