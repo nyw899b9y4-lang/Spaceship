@@ -13,6 +13,11 @@ create table if not exists public.submissions (
 
 alter table public.submissions enable row level security;
 
+-- Tables are not exposed automatically: allow visitors to INSERT only (no select/update/delete)
+revoke all on public.submissions from anon, authenticated;
+grant usage on schema public to anon;
+grant insert on public.submissions to anon;
+
 drop policy if exists "visitors can submit" on public.submissions;
 create policy "visitors can submit"
   on public.submissions for insert
