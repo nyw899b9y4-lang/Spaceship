@@ -154,19 +154,25 @@
         const vals = []; mask.forEach((k) => { const [x, y] = k.split(",").map(Number); vals.push(L(x, y)); });
         vals.sort((a, b) => a - b);
         const lo = vals[Math.floor(vals.length * 0.04)], hi = vals[Math.floor(vals.length * 0.96)] || lo + 1;
+        g.clearRect(0, 0, W, H); g.drawImage(pristine, 0, 0);
         paintHull((x, y) => Math.max(0, Math.min(1, (L(x, y) - lo) / (hi - lo || 1))));
         paintCanopy(); paintTurrets();
+        base = snap();                                   // skinned hull = new base for the modules
+        if (lastRes) decorate(lastRes);
         return true;
       } catch (_) { return false; }   // satellite image not readable (no CORS) → keep the plain hull
     };
     // ---- modules from the 200 m composition (solar sails, shield pods, bio-domes, coolant, maglev)
-    let base = null;
+    const snap = () => { const c = document.createElement("canvas"); c.width = W; c.height = H; c.getContext("2d").drawImage(cv, 0, 0); return c; };
+    const pristine = snap();          // hull + engines + canopy + turrets, before roof skin and modules
+    let base = null, lastRes = null;
     const xsAll = [...mask].map((k) => +k.split(",")[0]), hullMinX = Math.min(...xsAll), hullMaxX = Math.max(...xsAll), HL = hullMaxX - hullMinX;
     const topAt = (x) => { for (let y = gy0; y <= gy1; y++) if (has(x, y)) return y; return null; };
     const botAt = (x) => { for (let y = gy1; y >= gy0; y--) if (has(x, y)) return y; return null; };
     const spanOf = (a, b, f) => { const v = []; for (let x = a; x <= b; x++) { const r = f(x); if (r != null) v.push(r); } return v; };
     const decorate = (res) => {
-      if (!base) { base = document.createElement("canvas"); base.width = W; base.height = H; base.getContext("2d").drawImage(cv, 0, 0); }
+      lastRes = res;
+      if (!base) base = pristine;
       g.clearRect(0, 0, W, H); g.drawImage(base, 0, 0);
       const st = res.stats, caps = new Set(res.capabilities.map((c) => c.id));
       if (caps.has("solar")) {                                            // solar sails = wings above and below
