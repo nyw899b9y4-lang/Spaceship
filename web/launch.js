@@ -591,7 +591,7 @@
       const img = new Image(); img.crossOrigin = "anonymous";
       img.onload = () => { if (ui && ui.photo === img) renderSky(); };
       img.src = w.photo.url; ui.photo = img;
-      ui.view.innerHTML = '<canvas class="ck-sky"></canvas><canvas class="ck-hl"></canvas><div class="ck-tip"></div>';
+      ui.view.innerHTML = '<canvas class="ck-sky"></canvas><canvas class="ck-ph"></canvas><canvas class="ck-hl"></canvas><div class="ck-tip"></div>';
     }
     else ui.view.innerHTML = '<div class="nosignal">NO SIGNAL</div>';
     const floor = Number(document.getElementById("floor").value) || 0;
@@ -710,7 +710,7 @@
     const v = viewOf(w), r = ui.view.getBoundingClientRect(), portrait = r.height > r.width;
     const fov = portrait ? 100 : 120;
     // horizon in the lower third: look a bit above it
-    ui.cam = { az: v.az != null ? v.az : 180, alt: portrait ? 38 : 24, fov };
+    ui.cam = { az: v.az != null ? v.az : 180, alt: portrait ? 26 : 13, fov };   // horizon a bit below the middle: the window anchor stays in sight
     if (ui.inlay) ui.inlay.src = w.photo && w.photo.url ? w.photo.url : "";
   }
   let skyRaf = 0;
@@ -745,6 +745,14 @@
     const info = SpaceshipDome.render(cv, { lat: w.lat, lon: w.lon, time: t, az: ui.cam.az, alt: ui.cam.alt, fov: ui.cam.fov,
       layers: ui.layers, photo, mode: ui.skyMode });
     ui.skyInfo = info; hideTip();
+    // the real window photo fades in and out every ~10 s (toggle "Photo blend")
+    const ph = ui.view.querySelector(".ck-ph");
+    if (ph) {
+      const on = ui.layers.blend && ui.skyMode === "space" && photo;
+      ph.classList.toggle("cycle", !!on);
+      if (on) { if (ph.width !== Wc || ph.height !== Hc) { ph.width = Wc; ph.height = Hc; }
+        SpaceshipDome.renderPhoto(ph, { az: ui.cam.az, alt: ui.cam.alt, fov: ui.cam.fov, photo }); }
+    }
     const cons = info.inView.filter((x) => x.type === "constellation").map((x) => x.name);
     const named = info.inView.filter((x) => x.type !== "constellation").map((x) => x.name);
     ui.q("#ck-sky-info").textContent = (cons.length ? cons.slice(0, 3).join(" · ").toUpperCase() : "") + (named.length ? " ★ " + named.slice(0, 3).join(", ") : "");
@@ -922,7 +930,7 @@
           <div class="ck-layers">
             <button data-l="mw" class="on" title="Milky Way">Milky Way</button><button data-l="cons" class="on" title="Constellation lines">Lines</button>
             <button data-l="ecl" class="on" title="Ecliptic – path of Sun, Moon and planets">Ecliptic</button><button data-l="dso" class="on" title="Galaxies, nebulae, clusters (Messier)">Deep sky</button>
-            <button data-l="grid" title="Alt-azimuth grid">Alt/Az</button><button data-l="eq" title="Equatorial grid">RA/Dec</button><button data-l="labels" class="on" title="Names">Names</button>
+            <button data-l="grid" title="Alt-azimuth grid">Alt/Az</button><button data-l="eq" title="Equatorial grid">RA/Dec</button><button data-l="labels" class="on" title="Names">Names</button><button data-l="blend" class="on" title="Blend the real window photo in and out every 10 s">Photo blend</button>
           </div>
           <img class="ck-inlay" alt="Original window photo" title="Original photo – tap to show it in the sky">
           <small class="ck-hint">drag · scroll/pinch zoom · double-click resets</small>
@@ -970,7 +978,7 @@
       if (best >= 0) selectWindow(best, st);
     });
     ui.timeOffsetH = 0; ui.skyMode = "space";
-    ui.layers = { mw: true, cons: true, ecl: true, dso: true, grid: false, eq: false, labels: true };
+    ui.layers = { mw: true, cons: true, ecl: true, dso: true, grid: false, eq: false, labels: true, blend: true };
     ui.inlay = q(".ck-inlay");
     qa(".ck-layers button").forEach((b) => b.addEventListener("click", () => { const k = b.dataset.l; ui.layers[k] = !ui.layers[k]; b.classList.toggle("on", ui.layers[k]); renderSky(); }));
     bindNav();

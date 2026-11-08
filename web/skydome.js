@@ -31,98 +31,88 @@
     return { project, unproject, k, c, r, u, W, H };
   }
 
-  // ---------- window foreground: skyline from the photo, frame removed ----------
-  // Below the per-column skyline (lowest open-sky pixel) = buildings/trees → kept.
-  // Above it (incl. window bars crossing the sky) → removed, the sky shows through.
+  // ---------- window anchor: the lower part of the photo, stylized ----------
+  // Kept: everything below the photo's own horizon (balcony, sill, facade) – always visible as a fixed point –
+  // plus buildings/trees below the skyline. Removed: open sky and window bars above the skyline.
+  // Look: dark blueprint tone with glowing edges, so the stars stay the main thing.
   const fgCache = new WeakMap();
-  function foreground(img) {
-    if (fgCache.has(img)) return fgCache.get(img);
-    const mw = 200, mh = Math.round((mw * img.naturalHeight) / img.naturalWidth);
-    const m = SpaceshipSky.skyMask(img, img.naturalWidth, img.naturalHeight);
-    const out = document.createElement("canvas");
+  function foreground(img, el, vfov) {
+    const key = `${Math.round(el)}|${vfov}`, cached = fgCache.get(img);
+    if (cached && cached.key === key) return cached;
     const OW = 600, OH = Math.round((OW * img.naturalHeight) / img.naturalWidth);
-    out.width = OW; out.height = OH;
+    const out = document.createElement("canvas"); out.width = OW; out.height = OH;
     const og = out.getContext("2d", { willReadFrequently: true }); og.drawImage(img, 0, 0, OW, OH);
-    let skyline = null;
+    // row of the true horizon in the photo (gnomonic, centre column)
+    const hzY = Math.max(0, Math.min(1, 0.5 + Math.tan(el * D2R) / (2 * Math.tan((vfov / 2) * D2R))));
+    // per-column skyline from the sky mask: end of the lowest real sky run (specks and low reflections ignored)
+    let sm = null;
+    const m = SpaceshipSky.skyMask(img, img.naturalWidth, img.naturalHeight);
     if (m) {
-      const md = m.canvas.getContext("2d").getImageData(0, 0, m.canvas.width, m.canvas.height).data, cw = m.canvas.width, ch = m.canvas.height;
-      skyline = new Float32Array(cw); const has = new Uint8Array(cw);
+      const cw = m.canvas.width, ch = m.canvas.height, md = m.canvas.getContext("2d").getImageData(0, 0, cw, ch).data;
+      const sk = new Float32Array(cw).fill(-1);
       for (let x = 0; x < cw; x++) {
-        // skyline = end of the lowest real sky run (runs shorter than 3 % are specks: reflections, white walls)
         let low = -1, count = 0, run = 0;
         for (let y = 0; y <= ch; y++) {
           const sky = y < ch && md[(y * cw + x) * 4 + 3] > 128;
-          if (sky) run++;
-          else { if (run > ch * 0.03 && y - run < ch * 0.7) { low = y - 1; count += run; } run = 0; }   // sky never starts in the bottom 30 %
+          if (sky) run++; else { if (run > ch * 0.03 && y - run < ch * 0.7) { low = y - 1; count += run; } run = 0; }
         }
-        if (count > ch * 0.04) { skyline[x] = (low + 1) / ch; has[x] = 1; }
+        if (count > ch * 0.04) sk[x] = (low + 1) / ch;
       }
-      // columns with only a sliver of sky (edges of window bars) would cut tall notches into the skyline
-      { const vals = []; for (let x = 0; x < cw; x++) if (has[x]) vals.push(skyline[x]); vals.sort((a, b) => a - b);
-        const med = vals.length ? vals[vals.length >> 1] : 0; for (let x = 0; x < cw; x++) if (has[x] && skyline[x] < med * 0.6) has[x] = 0; }
-      // columns without sky (window bars, frame): interpolate between neighbours
-      let lastX = -1;
-      for (let x = 0; x < cw; x++) if (has[x]) {
-        if (lastX < 0) for (let j = 0; j < x; j++) skyline[j] = skyline[x];
-        else for (let j = lastX + 1; j < x; j++) skyline[j] = skyline[lastX] + (skyline[x] - skyline[lastX]) * ((j - lastX) / (x - lastX));
-        lastX = x;
-      }
-      if (lastX < 0) skyline = null; else for (let j = lastX + 1; j < cw; j++) skyline[j] = skyline[lastX];
-      if (skyline) {
-        // smooth a little and cut away everything above the skyline (feathered)
-        const sm = new Float32Array(cw);
-        for (let x = 0; x < cw; x++) { let s = 0, n = 0; for (let k = -3; k <= 3; k++) { const j = x + k; if (j >= 0 && j < cw) { s += skyline[j]; n++; } } sm[x] = s / n; }
-        // remove the window frame below the skyline too: estimate the frame colour from the
-        // no-sky columns above the skyline (mullions), then fill frame pixels from the nearest landscape pixel in the row
-        try {
-          const id = og.getImageData(0, 0, OW, OH), d = id.data, fx = (x) => Math.min(cw - 1, Math.floor((x / OW) * cw));
-          let fr = 0, fg = 0, fb = 0, fn = 0;
-          for (let y = 0; y < OH; y += 3) for (let x = 0; x < OW; x += 3) {
-            const c = fx(x); if (has[c] || y / OH > sm[c] - 0.02) continue;
-            const k = (y * OW + x) * 4; fr += d[k]; fg += d[k + 1]; fb += d[k + 2]; fn++;
-          }
-          if (fn > 30) {
-            fr /= fn; fg /= fn; fb /= fn;
-            const isFrame = (k) => Math.abs(d[k] - fr) + Math.abs(d[k + 1] - fg) + Math.abs(d[k + 2] - fb) < 60;
-            for (let y = 0; y < OH; y++) {
-              const row = y * OW * 4; let frameCount = 0;
-              for (let x = 0; x < OW; x++) if (isFrame(row + x * 4)) frameCount++;
-              if (frameCount > OW * 0.6 && y > 4) { d.copyWithin(row, row - OW * 16, row - OW * 12); continue; }   // skip the blended edge row   // horizontal rail → repeat row above
-              let lastGood = -1;
-              for (let x = 0; x < OW; x++) {
-                const k = row + x * 4; if (!isFrame(k)) { lastGood = x; continue; }
-                let nx = x; while (nx < OW && isFrame(row + nx * 4)) nx++;
-                // antialiased edges are blends of frame and landscape: widen the gap and sample a few px further out
-                const a0 = Math.max(0, x - 3), a1 = Math.min(OW, nx + 3), L = a0 - 2 >= 0 ? a0 - 2 : -1, R = a1 + 2 < OW ? a1 + 2 : -1;
-                for (let j = a0; j < a1; j++) {
-                  const pick = L >= 0 && R >= 0 ? (j - a0 < (a1 - a0) / 2 ? L : R) : L >= 0 ? L : R; if (pick < 0) break;
-                  const sI = row + pick * 4, t = row + j * 4; d[t] = d[sI]; d[t + 1] = d[sI + 1]; d[t + 2] = d[sI + 2];
-                }
-                lastGood = a1 - 1;
-                x = nx - 1;
-              }
-            }
-            og.putImageData(id, 0, 0);
-          }
-        } catch (err) { console.warn("frame removal", err); }
-        og.globalCompositeOperation = "destination-in";
-        const mask = document.createElement("canvas"); mask.width = OW; mask.height = OH;
-        const mg = mask.getContext("2d"); mg.fillStyle = "#fff"; mg.beginPath(); mg.moveTo(0, OH);
-        for (let x = 0; x <= cw; x++) mg.lineTo((x / cw) * OW, sm[Math.min(cw - 1, x)] * OH);
-        mg.lineTo(OW, OH); mg.closePath(); mg.filter = "blur(2px)"; mg.fill();
-        // feather the left/right edges into the open horizon
-        mg.globalCompositeOperation = "destination-in";
-        const fe = mg.createLinearGradient(0, 0, OW, 0);
-        fe.addColorStop(0, "rgba(0,0,0,0)"); fe.addColorStop(0.06, "#000"); fe.addColorStop(0.94, "#000"); fe.addColorStop(1, "rgba(0,0,0,0)");
-        mg.fillStyle = fe; mg.fillRect(0, 0, OW, OH);
-        // (destination-in clears everything outside the drawn rect, so fill the whole canvas)
-        const fb2 = mg.createLinearGradient(0, 0, 0, OH);
-        fb2.addColorStop(0, "#000"); fb2.addColorStop(0.8, "#000"); fb2.addColorStop(1, "rgba(0,0,0,0)"); mg.fillStyle = fb2; mg.fillRect(0, 0, OW, OH);
-        og.drawImage(mask, 0, 0);
+      const vals = Array.from(sk).filter((v) => v >= 0).sort((a, b) => a - b);
+      if (vals.length > cw * 0.1) {
+        const med = vals[vals.length >> 1];
+        // columns without (enough) sky: take the median skyline – no spikes, no notches
+        for (let x = 0; x < cw; x++) if (sk[x] < med * 0.6) sk[x] = med;
+        // wide running median for a calm silhouette
+        sm = new Float32Array(cw);
+        for (let x = 0; x < cw; x++) { const w = []; for (let k = -6; k <= 6; k++) w.push(sk[Math.max(0, Math.min(cw - 1, x + k))]); w.sort((a, b) => a - b); sm[x] = w[6]; }
       }
     }
-    const res = { canvas: out, skyline: !!skyline };
+    // stylize: dark blueprint tone + glowing edges
+    try {
+      const id = og.getImageData(0, 0, OW, OH), d = id.data, gy = new Float32Array(OW * OH);
+      for (let i = 0; i < OW * OH; i++) gy[i] = 0.299 * d[i * 4] + 0.587 * d[i * 4 + 1] + 0.114 * d[i * 4 + 2];
+      for (let y = 0; y < OH; y++) for (let x = 0; x < OW; x++) {
+        const i = y * OW + x, k = i * 4, g = gy[i];
+        let e = 0;
+        if (x > 0 && y > 0 && x < OW - 1 && y < OH - 1) {
+          const gx = gy[i - OW + 1] + 2 * gy[i + 1] + gy[i + OW + 1] - gy[i - OW - 1] - 2 * gy[i - 1] - gy[i + OW - 1];
+          const gv = gy[i + OW - 1] + 2 * gy[i + OW] + gy[i + OW + 1] - gy[i - OW - 1] - 2 * gy[i - OW] - gy[i - OW + 1];
+          e = Math.min(1, Math.hypot(gx, gv) / 260);
+        }
+        const r = d[k], gg = d[k + 1], b = d[k + 2];
+        // keep a hint of the real colour (plants stay greenish), mostly a deep blue tone
+        d[k] = 8 + g * 0.16 + r * 0.06 + e * 110;
+        d[k + 1] = 14 + g * 0.2 + gg * 0.07 + e * 220;
+        d[k + 2] = 34 + g * 0.26 + b * 0.05 + e * 235;
+      }
+      og.putImageData(id, 0, 0);
+    } catch (_) { /* photo not readable: keep it as it is */ }
+    // alpha mask: below the skyline OR below the photo's horizon (the anchor), soft edges
+    const mask = document.createElement("canvas"); mask.width = OW; mask.height = OH;
+    const mg = mask.getContext("2d"); mg.fillStyle = "#fff";
+    if (sm) {
+      const cw = sm.length; mg.beginPath(); mg.moveTo(0, OH);
+      for (let x = 0; x <= cw; x++) mg.lineTo((x / cw) * OW, sm[Math.min(cw - 1, x)] * OH);
+      mg.lineTo(OW, OH); mg.closePath(); mg.filter = "blur(3px)"; mg.fill(); mg.filter = "none";
+    }
+    const hg = mg.createLinearGradient(0, (hzY - 0.06) * OH, 0, (hzY + 0.04) * OH);
+    hg.addColorStop(0, "rgba(255,255,255,0)"); hg.addColorStop(1, "#fff"); mg.fillStyle = hg; mg.fillRect(0, 0, OW, OH);
+    // feather the left/right edges (destination-in clears outside the drawn rect → fill the whole canvas)
+    mg.globalCompositeOperation = "destination-in";
+    const fe = mg.createLinearGradient(0, 0, OW, 0);
+    fe.addColorStop(0, "rgba(0,0,0,0)"); fe.addColorStop(0.07, "#000"); fe.addColorStop(0.93, "#000"); fe.addColorStop(1, "rgba(0,0,0,0)");
+    mg.fillStyle = fe; mg.fillRect(0, 0, OW, OH);
+    og.globalCompositeOperation = "destination-in"; og.drawImage(mask, 0, 0); og.globalCompositeOperation = "source-over";
+    const res = { canvas: out, key };
     fgCache.set(img, res); return res;
+  }
+  // full original photo, downsized once (for the periodic blend and photo mode)
+  const phCache = new WeakMap();
+  function photoCanvas(img) {
+    if (phCache.has(img)) return phCache.get(img);
+    const c = document.createElement("canvas"); c.width = 900; c.height = Math.round((900 * img.naturalHeight) / img.naturalWidth);
+    c.getContext("2d").drawImage(img, 0, 0, c.width, c.height); phCache.set(img, c); return c;
   }
   // texture-mapped triangle (affine)
   function tri(g, img, s0, s1, s2, d0, d1, d2) {
@@ -298,14 +288,12 @@
       const gy = Math.min(...hzPts.map((p) => p[1])), gg = fg.createLinearGradient(0, Math.max(0, gy), 0, H);
       gg.addColorStop(0, "#0c1226"); gg.addColorStop(0.15, "#070b18"); gg.addColorStop(1, "#020308"); fg.fillStyle = gg; fg.fill();
     }
-    // 9) window foreground: skyline silhouette from the photo (frame removed), or the whole photo in photo mode
+    // 9) window anchor: stylized lower part of the photo (or the whole photo in photo mode)
     if (view.photo && view.photo.img && view.photo.img.naturalWidth) {
-      const src = view.mode === "photo" ? view.photo.img : foreground(view.photo.img).canvas;
-      if (view.mode !== "photo") { fg.save(); fg.filter = `brightness(${sunAlt > 0 ? 0.55 : 0.32}) saturate(.8)`; }
-      const srcC = src instanceof HTMLImageElement ? (() => { const c = document.createElement("canvas"); c.width = 900; c.height = Math.round(900 * src.naturalHeight / src.naturalWidth); c.getContext("2d").drawImage(src, 0, 0, c.width, c.height); return c; })() : src;
+      const src = view.mode === "photo" ? photoCanvas(view.photo.img) : foreground(view.photo.img, view.photo.el, view.photo.vfov).canvas;
       const tmp = document.createElement("canvas"); tmp.width = W; tmp.height = H;
-      drawPhoto(tmp.getContext("2d"), cam, srcC, view.photo, dpr);
-      fg.drawImage(tmp, 0, 0); if (view.mode !== "photo") fg.restore();
+      drawPhoto(tmp.getContext("2d"), cam, src, view.photo, dpr);
+      fg.drawImage(tmp, 0, 0);
     }
     g.drawImage(fgC, 0, 0);
     // horizon line + cardinal points
@@ -322,5 +310,13 @@
     return info;
   }
 
-  window.SpaceshipDome = { render, makeCam, altOf, azOf };
+  // the original photo alone, warped into the same projection (overlay that fades in and out)
+  function renderPhoto(canvas, view) {
+    const g = canvas.getContext("2d"), W = canvas.width, H = canvas.height;
+    g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, W, H);
+    if (!view.photo || !view.photo.img || !view.photo.img.naturalWidth) return;
+    drawPhoto(g, makeCam(view.az, view.alt, view.fov, W, H), photoCanvas(view.photo.img), view.photo, 1);
+  }
+
+  window.SpaceshipDome = { render, renderPhoto, makeCam, altOf, azOf };
 })();
