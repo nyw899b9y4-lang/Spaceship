@@ -8,7 +8,7 @@
 
   function load() {
     if (catalog) return Promise.resolve(catalog);
-    if (!loading) loading = fetch("vendor/sky/sky.json?v=2").then((r) => r.json()).then((j) => (catalog = j));
+    if (!loading) loading = fetch("vendor/sky/sky.json?v=3").then((r) => r.json()).then((j) => (catalog = j));
     return loading;
   }
 
@@ -260,5 +260,7 @@
               : bv < 0.81 ? ["G", "yellow (like the Sun)"] : bv < 1.4 ? ["K", "orange"] : ["M", "red"];
     return { tempK: Math.round(T / 100) * 100, cls: cls[0], colour: cls[1] };
   }
-  window.SpaceshipSky = { load, render, bodies, starPhysics, bvColor };
+  window.SpaceshipSky = { load, render, bodies, starPhysics, bvColor,
+    // building blocks for the full-screen dome renderer (skydome.js)
+    lstDeg, horizVec, vecAzAlt, skyMask, catalog: () => catalog };
 })();

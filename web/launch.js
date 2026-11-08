@@ -586,7 +586,7 @@
     const az = w.wall_azimuth_deg != null ? w.wall_azimuth_deg : c.camera_azimuth_deg;
     const tilt = c.camera_elevation_deg;
     ui.view.innerHTML = "";
-    ui.photo = null;
+    ui.photo = null; resetCam(st.windows[i]);
     if (w.photo && w.photo.url) {   // photo is drawn into a canvas together with the real sky
       const img = new Image(); img.crossOrigin = "anonymous";
       img.onload = () => { if (ui && ui.photo === img) renderSky(); };
@@ -705,8 +705,19 @@
     const el = c.camera_elevation_deg != null ? c.camera_elevation_deg : 5;
     return { az, el, azSrc: c.camera_azimuth_deg != null ? "PHONE" : "HULL", elSrc: c.camera_elevation_deg != null ? "PHONE" : "EST." };
   }
+  // free camera for the full-screen dome: starts looking through the selected window
+  function resetCam(w) {
+    const v = viewOf(w), r = ui.view.getBoundingClientRect(), portrait = r.height > r.width;
+    const fov = portrait ? 100 : 120;
+    // horizon in the lower third: look a bit above it
+    ui.cam = { az: v.az != null ? v.az : 180, alt: portrait ? 38 : 24, fov };
+    if (ui.inlay) ui.inlay.src = w.photo && w.photo.url ? w.photo.url : "";
+  }
+  let skyRaf = 0;
+  function requestSky() { if (!skyRaf) skyRaf = requestAnimationFrame(() => { skyRaf = 0; renderSky(); }); }
   function renderSky() {
     if (!ui || !ui.photo || !ui.photo.naturalWidth) return;
+    if (window.SpaceshipDome && ui.cam) return renderDome();
     const cv = ui.view.querySelector(".ck-sky"); if (!cv) return;
     const r = ui.view.getBoundingClientRect(), dpr = Math.min(2, window.devicePixelRatio || 1);
     cv.width = Math.max(320, Math.round(r.width * dpr)); cv.height = Math.max(200, Math.round(r.height * dpr));
@@ -724,6 +735,49 @@
     ui.q("#ck-date").textContent = ui.timeOffsetH ? `${ui.timeOffsetH > 0 ? "+" : ""}${ui.timeOffsetH} H · ${t.toLocaleDateString()}` : "NOW · LIVE";
   }
 
+  function renderDome() {
+    const cv = ui.view.querySelector(".ck-sky"); if (!cv) return;
+    const r = ui.view.getBoundingClientRect(), dpr = Math.min(2, window.devicePixelRatio || 1);
+    const Wc = Math.max(320, Math.round(r.width * dpr)), Hc = Math.max(200, Math.round(r.height * dpr));
+    if (cv.width !== Wc || cv.height !== Hc) { cv.width = Wc; cv.height = Hc; }
+    const w = cur.windows[active], v = viewOf(w), t = skyTime(), img = ui.photo, portrait = img.naturalHeight >= img.naturalWidth;
+    const photo = v.az != null ? { img, az: v.az, el: v.el, hfov: portrait ? 53 : 67, vfov: portrait ? 67 : 53 } : null;
+    const info = SpaceshipDome.render(cv, { lat: w.lat, lon: w.lon, time: t, az: ui.cam.az, alt: ui.cam.alt, fov: ui.cam.fov,
+      layers: ui.layers, photo, mode: ui.skyMode });
+    ui.skyInfo = info; hideTip();
+    const cons = info.inView.filter((x) => x.type === "constellation").map((x) => x.name);
+    const named = info.inView.filter((x) => x.type !== "constellation").map((x) => x.name);
+    ui.q("#ck-sky-info").textContent = (cons.length ? cons.slice(0, 3).join(" · ").toUpperCase() : "") + (named.length ? " ★ " + named.slice(0, 3).join(", ") : "");
+    ui.q("#ck-hdg").textContent = `${String(Math.round(ui.cam.az)).padStart(3, "0")}° ${compass(ui.cam.az)}`;
+    ui.q("#ck-tilt").textContent = `${ui.cam.alt >= 0 ? "+" : ""}${Math.round(ui.cam.alt)}° · FOV ${Math.round(ui.cam.fov)}°`;
+    drawTape(ui.cam.az);
+    ui.q("#ck-sun").textContent = `SUN ${info.sunAlt >= 0 ? "+" : ""}${Math.round(info.sunAlt)}° ${info.sunAlt > 0 ? "DAY" : info.sunAlt > -12 ? "TWILIGHT" : "NIGHT"}`;
+    ui.q("#ck-time").textContent = t.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    ui.q("#ck-date").textContent = ui.timeOffsetH ? `${ui.timeOffsetH > 0 ? "+" : ""}${ui.timeOffsetH} H · ${t.toLocaleDateString()}` : "NOW · LIVE";
+  }
+  // drag = look around, wheel / pinch = zoom, double-click = back to the window view
+  function bindNav() {
+    const v = ui.view, pts = new Map(); let last = null, moved = 0, pinch0 = null;
+    v.addEventListener("pointerdown", (e) => { pts.set(e.pointerId, [e.clientX, e.clientY]); v.setPointerCapture(e.pointerId); moved = 0;
+      if (pts.size === 2) { const [a, b] = [...pts.values()]; pinch0 = { d: Math.hypot(a[0] - b[0], a[1] - b[1]), fov: ui.cam.fov }; } });
+    v.addEventListener("pointermove", (e) => {
+      if (!pts.has(e.pointerId) || !ui.cam) return;
+      const prev = pts.get(e.pointerId); pts.set(e.pointerId, [e.clientX, e.clientY]);
+      if (pts.size === 2 && pinch0) { const [a, b] = [...pts.values()]; const d = Math.hypot(a[0] - b[0], a[1] - b[1]);
+        ui.cam.fov = Math.max(15, Math.min(200, pinch0.fov * pinch0.d / Math.max(10, d))); moved += 10; requestSky(); return; }
+      const dx = e.clientX - prev[0], dy = e.clientY - prev[1]; moved += Math.abs(dx) + Math.abs(dy);
+      const dpp = ui.cam.fov / v.getBoundingClientRect().width;
+      ui.cam.az = (ui.cam.az - dx * dpp + 360) % 360; ui.cam.alt = Math.max(-30, Math.min(90, ui.cam.alt + dy * dpp));
+      if (moved > 4) { v.classList.add("dragging"); requestSky(); }
+    });
+    const up = (e) => { pts.delete(e.pointerId); if (pts.size < 2) pinch0 = null; if (!pts.size) setTimeout(() => v.classList.remove("dragging"), 0); };
+    v.addEventListener("pointerup", up); v.addEventListener("pointercancel", up);
+    v.addEventListener("wheel", (e) => { if (!ui.cam) return; e.preventDefault();
+      ui.cam.fov = Math.max(15, Math.min(200, ui.cam.fov * Math.pow(1.0015, e.deltaY))); requestSky(); }, { passive: false });
+    v.addEventListener("dblclick", () => { resetCam(cur.windows[active]); renderSky(); });
+    ui.wasDrag = () => moved > 6;
+  }
+
   // ---------- hover / tap: star info ----------
   const compass16 = (az) => ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"][Math.round(az / 22.5) % 16];
   function magWords(m) {
@@ -739,6 +793,11 @@
         <span>Brightness ${o.mag.toFixed(2)} mag – ${magWords(o.mag)}</span>
         <span>${ph.colour} star · type ${ph.cls} · ~${ph.tempK.toLocaleString()} K</span>
         <span>Now ${pos}</span><small>HIP ${o.hip} · RA ${(o.ra / 15).toFixed(2)} h · Dec ${o.dec.toFixed(1)}°</small>`;
+    }
+    if (o.type === "dso") {
+      return `<b style="color:#ffb4b4">◌ ${o.name}${o.alias ? " · " + o.alias : ""}</b><i>${o.kind}${o.desig ? " · " + o.desig : ""}</i>
+        <span>Brightness ${o.mag.toFixed(1)} mag – ${o.mag < 5 ? "visible to the eye in a dark sky" : "binoculars or a telescope"}</span>
+        ${o.dim ? `<span>Size on the sky ~${o.dim}′</span>` : ""}<span>Now ${pos}</span><small>RA ${(o.ra / 15).toFixed(2)} h · Dec ${o.dec.toFixed(1)}°</small>`;
     }
     const km = o.distAU * 149597870.7, lightMin = (o.distAU * 499.005) / 60;
     let extra = "";
@@ -787,9 +846,9 @@
   }
   function bindHover() {
     const v = ui.view;
-    v.addEventListener("mousemove", (e) => { const h = pickAt(e.clientX, e.clientY); if (h) showTip(h); else if (ui.hover) hideTip(); });
+    v.addEventListener("mousemove", (e) => { if (e.buttons) return; const h = pickAt(e.clientX, e.clientY); if (h) showTip(h); else if (ui.hover) hideTip(); });
     v.addEventListener("mouseleave", hideTip);
-    v.addEventListener("click", (e) => { const h = pickAt(e.clientX, e.clientY); if (h) { ui.hover = null; showTip(h); } else hideTip(); });
+    v.addEventListener("click", (e) => { if (ui.wasDrag && ui.wasDrag()) return; const h = pickAt(e.clientX, e.clientY); if (h) { ui.hover = null; showTip(h); } else hideTip(); });
   }
 
   function drawTape(az) {
@@ -860,6 +919,13 @@
         <div class="ly ly-tl">
           <div class="ly-head"><span>${(st.address.label || "").replace(/</g, "&lt;")}</span><small>deck ${floor}</small></div>
           <div class="ck-wins"><button class="ck-mode" type="button" title="Real stars / original photo">★ Space</button></div>
+          <div class="ck-layers">
+            <button data-l="mw" class="on" title="Milky Way">Milky Way</button><button data-l="cons" class="on" title="Constellation lines">Lines</button>
+            <button data-l="ecl" class="on" title="Ecliptic – path of Sun, Moon and planets">Ecliptic</button><button data-l="dso" class="on" title="Galaxies, nebulae, clusters (Messier)">Deep sky</button>
+            <button data-l="grid" title="Alt-azimuth grid">Alt/Az</button><button data-l="eq" title="Equatorial grid">RA/Dec</button><button data-l="labels" class="on" title="Names">Names</button>
+          </div>
+          <img class="ck-inlay" alt="Original window photo" title="Original photo – tap to show it in the sky">
+          <small class="ck-hint">drag · scroll/pinch zoom · double-click resets</small>
         </div>
         <div class="ly ly-tr">
           <div class="row" style="gap:8px;align-items:baseline;justify-content:space-between"><span id="ck-time">--:--</span><button class="ck-now" type="button">Now</button></div>
@@ -904,9 +970,14 @@
       if (best >= 0) selectWindow(best, st);
     });
     ui.timeOffsetH = 0; ui.skyMode = "space";
+    ui.layers = { mw: true, cons: true, ecl: true, dso: true, grid: false, eq: false, labels: true };
+    ui.inlay = q(".ck-inlay");
+    qa(".ck-layers button").forEach((b) => b.addEventListener("click", () => { const k = b.dataset.l; ui.layers[k] = !ui.layers[k]; b.classList.toggle("on", ui.layers[k]); renderSky(); }));
+    bindNav();
     const modeBtn = q(".ck-mode");
     modeBtn.addEventListener("click", () => { ui.skyMode = ui.skyMode === "space" ? "photo" : "space";
-      modeBtn.textContent = ui.skyMode === "space" ? "★ Space" : "▣ Photo"; renderSky(); });
+      modeBtn.textContent = ui.skyMode === "space" ? "★ Space" : "▣ Photo"; ui.inlay.classList.toggle("on", ui.skyMode === "photo"); renderSky(); });
+    ui.inlay.addEventListener("click", () => modeBtn.click());
     const slider = q(".ck-slider");
     slider.addEventListener("input", () => { ui.timeOffsetH = Number(slider.value); renderSky(); });
     q(".ck-now").addEventListener("click", () => { slider.value = 0; ui.timeOffsetH = 0; renderSky(); });
