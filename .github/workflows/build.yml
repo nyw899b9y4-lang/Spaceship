@@ -25,14 +25,16 @@ jobs:
           yes | "$SDKM" --licenses > /dev/null || true
           "$SDKM" "platforms;android-37" || true
 
-      - uses: gradle/actions/setup-gradle@v5
-        with:
-          gradle-version: current
-
       - name: Build APK
         run: |
-          gradle --version
-          gradle --no-daemon assembleDebug
+          # Prefer the Gradle preinstalled on the runner; fall back to the wrapper (with retries)
+          if command -v gradle >/dev/null && gradle --version | grep -qE "Gradle (9\.([6-9]|[1-9][0-9])|[1-9][0-9])"; then
+            gradle --version
+            gradle --no-daemon assembleDebug
+          else
+            for i in 1 2 3 4 5; do ./gradlew --no-daemon assembleDebug && exit 0; echo "retry $i"; sleep 30; done
+            exit 1
+          fi
 
       - name: Rename APK
         run: cp app/build/outputs/apk/debug/app-debug.apk HelloWorld.apk
