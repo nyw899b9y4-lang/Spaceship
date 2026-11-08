@@ -1,0 +1,52 @@
+name: iOS – build & run in simulator
+
+on:
+  push:
+    branches: [main]
+    paths: ['ios/**', '.github/workflows/ios.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  ios:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Select newest Xcode
+        run: |
+          XC=$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)
+          echo "Using $XC"
+          sudo xcode-select -s "$XC"
+          xcodebuild -version
+          xcodebuild -showsdks | grep -i simulator
+
+      - name: Build for iPhone Simulator
+        run: |
+          xcodebuild -project ios/HelloWorld.xcodeproj -target HelloWorld \
+            -sdk iphonesimulator -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO SYMROOT="$PWD/ios/build" build | tail -20
+
+      - name: Run in simulator and take a screenshot
+        run: |
+          APP=ios/build/Debug-iphonesimulator/HelloWorld.app
+          UDID=$(xcrun simctl list devices available -j | python3 -c "import json,sys;d=json.load(sys.stdin)['devices'];print([x['udid'] for k,v in sorted(d.items()) if 'iOS' in k for x in v if x['name'].startswith('iPhone')][-1])")
+          xcrun simctl boot "$UDID"
+          xcrun simctl bootstatus "$UDID"
+          xcrun simctl install "$UDID" "$APP"
+          xcrun simctl launch "$UDID" com.example.spaceship.helloworld
+          sleep 8
+          xcrun simctl io "$UDID" screenshot ios-simulator-screenshot.png
+          (cd ios/build/Debug-iphonesimulator && zip -qr ../../../HelloWorld-iOS-Simulator.zip HelloWorld.app)
+
+      - name: Publish iOS release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "ios-v1.0.${{ github.run_number }}" \
+            HelloWorld-iOS-Simulator.zip ios-simulator-screenshot.png \
+            --title "iOS Hello World v1.0.${{ github.run_number }} (Simulator build)" \
+            --notes "Simulator build for Mac: unzip, then drag HelloWorld.app onto a running iPhone Simulator. To run on a real iPhone, open ios/HelloWorld.xcodeproj in Xcode (see README)." \
+            --latest=false
