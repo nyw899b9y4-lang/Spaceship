@@ -793,11 +793,17 @@
          : m < 3.5 ? "clearly visible" : m < 5 ? "visible to the eye" : "faint – needs a dark sky";
   }
   // al-Ṣūfī / Ptolemy: number in abjad letters + Arabic name
+  // al-Ṣūfī / Ptolemy: number in abjad letters, Arabic name, 964 position and magnitudes
   function sufiHtml(o) {
-    const S = window.SpaceshipSufi && SpaceshipSufi.star(o.hip); if (!S) return "";
-    const c = SpaceshipSufi.con(S.con) || {};
-    return `<span class="ck-sufi"><span class="ar">${SpaceshipSufi.abjad(S.n)}</span> = <em>${S.n}</em> of the ${c.count || "?"} stars of ${c.tr || S.con} (al-Ṣūfī / Ptolemy)</span>
-      ${S.ar ? `<span class="ck-sufi"><span class="ar">${S.ar}</span> ${S.tr} – ${S.en}</span>` : `<span class="ck-sufi">${S.en}</span>`}`;
+    const SU = window.SpaceshipSufi, S = SU && SU.star(o.hip); if (!S) return "";
+    const c = SU.con(S.con) || {}, nm = SU.nameOf(S);
+    const head = S.added
+      ? `<span class="ck-sufi"><span class="ar">${S.ab}</span> = <em>${S.n}</em> · added by al-Ṣūfī to ${c.tr || S.con} (not in Ptolemy)</span>`
+      : `<span class="ck-sufi"><span class="ar">${S.ab}</span> = <em>${S.n}</em> of the ${c.count || "?"} stars of ${c.tr || S.con} – ${S.where}</span>`;
+    const name = nm ? `<span class="ck-sufi">${nm.ar ? `<span class="ar">${nm.ar}</span> ` : ""}${nm.tr ? `<i class="seg-ph">${nm.tr}</i> – ` : ""}${nm.en || ""}${nm.en2 ? ` · ${nm.en2}` : ""}</span>` : "";
+    const pos = S.lon ? `<span class="ck-sufi">964: ${S.lon}, ${S.lat}${S.fix ? " *" : ""} · al-Ṣūfī ${SU.magText(S.mag)} · Ptolemy ${SU.magText(S.ptol)}</span>`
+      : `<span class="ck-sufi">al-Ṣūfī ${SU.magText(S.mag)} · ${S.where}</span>`;
+    return head + name + pos + (S.note ? `<span class="ck-sufi ck-note">${S.note}</span>` : "");
   }
   function tipHtml(o) {
     if (o.type === "region") return o.html;
@@ -893,6 +899,152 @@
     });
   }
 
+  // ---------- al-Ṣūfī panel: “al-Ṣūfī’s table of positions and magnitudes for the year 964” ----------
+  // tab 1: the annotated page (segmentation of the Arabic writing, translation, phonetics, number tags)
+  // tab 2: the table of positions and magnitudes
+  function toggleTable(force) {
+    const el = ui.q(".sufi-table"), T = window.SpaceshipSufi && SpaceshipSufi.table; if (!el || !T) return;
+    const open = force != null ? force : el.hidden;
+    el.hidden = !open; ui.q(".ck-table-btn").classList.toggle("on", open);
+    if (open && !el.dataset.built) buildPanel(el, T);
+    ui.layers.pos964 = open && el.dataset.tab === "table" && el.querySelector(".st-pos964").checked;
+    renderSky();
+  }
+  function showInSky(hip) {
+    const el = ui.q(".sufi-table"), res = lookAtHip(hip);
+    if (res === "below") { el.querySelector(".stb-msg").textContent = "This star is below the horizon right now – move the time slider to see it rise."; return; }
+    toggleTable(false);
+  }
+  function buildPanel(el, T) {
+    const esc = (t) => String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;");
+    el.innerHTML = `
+      <div class="stb-head"><div><h3>${esc(T.title)}</h3><small>${esc(T.conTitle)}</small></div><button type="button" class="stb-x" aria-label="Close">×</button></div>
+      <div class="stb-tabs"><button type="button" data-tab="page" class="on">📖 The page, read</button><button type="button" data-tab="table">📜 Positions &amp; magnitudes</button></div>
+      <div class="stb-body stb-page"></div>
+      <div class="stb-body stb-table" hidden></div>
+      <p class="stb-msg"></p>`;
+    el.dataset.built = "1"; el.dataset.tab = "page";
+    el.querySelector(".stb-x").addEventListener("click", () => toggleTable(false));
+    el.querySelectorAll(".stb-tabs button").forEach((b) => b.addEventListener("click", () => {
+      el.dataset.tab = b.dataset.tab;
+      el.querySelectorAll(".stb-tabs button").forEach((x) => x.classList.toggle("on", x === b));
+      el.querySelector(".stb-page").hidden = b.dataset.tab !== "page"; el.querySelector(".stb-table").hidden = b.dataset.tab !== "table";
+      ui.layers.pos964 = b.dataset.tab === "table" && el.querySelector(".st-pos964").checked; renderSky();
+    }));
+    buildPage(el.querySelector(".stb-page"), SpaceshipSufi.figures[0]);
+    buildTable(el.querySelector(".stb-table"), T);
+  }
+  // the page with its writing segmented – wide screens: callouts left/right like the annotated sheet; narrow: numbered list below
+  function buildPage(box, f) {
+    const A = f.ann, esc = (t) => String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;");
+    const wide = box.parentElement.getBoundingClientRect().width >= 760;
+    const SIDE = wide ? 700 : 0, VW = f.frameW + 2 * SIDE, VH = f.frameH + (wide ? 90 : 10);
+    const R = (r, cls, id) => `<rect class="${cls}" data-id="${id}" x="${r[0] + SIDE}" y="${r[1]}" width="${r[2] - r[0]}" height="${r[3] - r[1]}" rx="8"></rect>`;
+    const rects = A.boxes.map((b, k) => R(b.box, "sg-box" + (b.color === "gold" ? " gold" : ""), b.id) +
+      (b.alif ? R(b.alif, "sg-alif", b.id) + `<circle class="sg-ring" data-id="${b.id}" cx="${b.ring[0] + SIDE}" cy="${b.ring[1]}" r="${b.ring[2]}"></circle>` : "") +
+      (wide ? "" : `<g class="sg-mark${b.color === "gold" ? " gold" : ""}" data-id="${b.id}"><circle cx="${b.box[0] + SIDE}" cy="${b.box[1]}" r="26"></circle><text x="${b.box[0] + SIDE}" y="${b.box[1] + 1}">${k + 1}</text></g>`)).join("");
+    const tags = A.tags.map(([n, x, y]) => { const w = String(n).length > 1 ? 44 : 30;
+      return `<g class="sg-tag" data-n="${n}"><rect x="${x + SIDE - w / 2}" y="${y - 17}" width="${w}" height="34" rx="7"></rect><text x="${x + SIDE}" y="${y + 1}">${n}</text></g>`; }).join("");
+    const textBlock = (b) => `<button type="button" class="sg-go" data-hip="${b.hip}" title="Show in the sky">↗ sky</button><p class="sg-ar" dir="rtl">${esc(b.ar)}</p><p class="sg-tr">${esc(b.tr)}</p><p class="sg-ph">${esc(b.ph)}</p>`;
+    // zoom on the head: the same page, cropped by a nested viewBox, with each of the three stars ringed
+    const inset = (b, x, y, size) => { const [vx, vy, vw, vh] = b.inset.view, k = vw / size;
+      return `<svg class="sg-inset" x="${x}" y="${y}" width="${size}" height="${size}" viewBox="${vx} ${vy} ${vw} ${vh}">
+        <image href="${f.page}" x="0" y="0" width="${f.frameW}" height="${f.frameH}"></image>
+        <rect class="sg-alif" x="${b.alif[0]}" y="${b.alif[1]}" width="${b.alif[2] - b.alif[0]}" height="${b.alif[3] - b.alif[1]}" rx="${3 * k}" style="stroke-width:${3 * k}px"></rect>
+        ${b.dots.map(([dx, dy]) => `<circle class="sg-ring" cx="${dx}" cy="${dy}" r="${5.5}" style="stroke-width:${3 * k}px"></circle>`).join("")}
+        <rect class="sg-box gold" x="${b.box[0]}" y="${b.box[1]}" width="${b.box[2] - b.box[0]}" height="${b.box[3] - b.box[1]}" rx="${4 * k}" style="stroke-width:${3 * k}px"></rect>
+        <rect x="${vx}" y="${vy}" width="${vw}" height="${vh}" fill="none" stroke="#f5c542" stroke-width="${3 * k}"></rect></svg>`; };
+    let calls = "", extra = "";
+    if (wide) calls = A.boxes.map((b) => {
+      const [x0, y0, x1, y1] = b.box, L = b.side === "L", gold = b.color === "gold";
+      const fx = L ? 24 : SIDE + f.frameW + 76, fw = SIDE - 100, ax = L ? SIDE - 64 : SIDE + f.frameW + 64, ay = b.ty + (gold ? 120 : 26);
+      const ex = L ? x0 + SIDE : x1 + SIDE, ey = Math.max(y0, Math.min(y1, ay));
+      if (b.inset) {   // the zoom sits under the last callout on the right (placed by relayout)
+        const ix = SIDE + f.frameW + 76, iy = 1395, size = 430;
+        extra += `<g class="sg-inset-g" data-size="${size}">` + inset(b, ix, iy, size) + `<foreignObject class="sg-notes-fo" x="${ix}" y="${iy + size + 12}" width="${fw}" height="300"><div xmlns="http://www.w3.org/1999/xhtml" class="sg-text sg-notes">
+          <p class="sg-tr">Zoom on the head:</p>${b.inset.notes.map(([col, t, sub]) => `<p class="sg-tr" style="color:${col}">${esc(t)}</p><p class="sg-ph">${esc(sub)}</p>`).join("")}</div></foreignObject></g>`;
+      }
+      return `<g class="sg-call${gold ? " gold" : ""}" data-id="${b.id}" data-side="${b.side}" data-ty="${b.ty}" data-y0="${y0}" data-y1="${y1}"><line x1="${ex}" y1="${ey}" x2="${ax}" y2="${ay}"></line><circle cx="${ax}" cy="${ay}" r="7"></circle>
+        <foreignObject x="${fx}" y="${b.ty}" width="${fw}" height="${gold ? 640 : 520}"><div xmlns="http://www.w3.org/1999/xhtml" class="sg-text${gold ? " gold" : ""}">${textBlock(b)}</div></foreignObject></g>`; }).join("");
+    const legend = wide ? `<text class="sg-legend" x="${SIDE}" y="${f.frameH + 62}">${A.legend.map(([col, t], k) => `<tspan ${k ? 'dx="36"' : ""} style="fill:${col}">${esc(t)}</tspan>`).join("")}</text>` : "";
+    box.innerHTML = `<div class="sg-wrap${wide ? " wide" : ""}"><svg class="sg-svg" viewBox="0 0 ${VW} ${VH}" preserveAspectRatio="xMidYMin meet">
+        <image href="${f.page}" x="${SIDE}" y="0" width="${f.frameW}" height="${f.frameH}"></image>${rects}${tags}${calls}${extra}${legend}</svg>
+      ${wide ? "" : `<ol class="sg-list">${A.boxes.map((b) => `<li data-id="${b.id}" class="${b.color === "gold" ? "gold" : ""}">${textBlock(b)}${b.inset
+          ? `<div class="sg-list-inset"><svg viewBox="0 0 300 300" width="150" height="150">${inset(b, 0, 0, 300)}</svg><div>${b.inset.notes.map(([col, t, sub]) => `<p style="color:${col}">${esc(t)}</p><p class="sg-ph">${esc(sub)}</p>`).join("")}</div></div>` : ""}</li>`).join("")}</ol>
+        <p class="sg-legend-h">${A.legend.map(([col, t]) => `<span style="color:${col}">${esc(t)}</span>`).join(" · ")}</p>`}
+      <p class="stb-src">The drawing is “as seen on the globe”, the mirror image of the sky – in the cockpit it is flipped onto the real stars. Segmentation and readings from the project chat “صورة محادثة مترجمة”.</p></div>`;
+    // highlight a segment everywhere when one of its parts is touched
+    const all = (id) => box.querySelectorAll(`[data-id="${id}"]`);
+    box.querySelectorAll("[data-id]").forEach((n) => {
+      n.addEventListener("mouseenter", () => all(n.dataset.id).forEach((x) => x.classList.add("on")));
+      n.addEventListener("mouseleave", () => all(n.dataset.id).forEach((x) => x.classList.remove("on")));
+      n.addEventListener("click", (e) => { if (e.target.closest(".sg-go")) return;
+        box.querySelectorAll(".pin").forEach((x) => x.classList.remove("pin")); all(n.dataset.id).forEach((x) => x.classList.add("pin"));
+        if (!wide) { const li = box.querySelector(`li[data-id="${n.dataset.id}"]`); li && li.scrollIntoView({ block: "nearest", behavior: "smooth" }); } });
+    });
+    box.querySelectorAll(".sg-go").forEach((b) => b.addEventListener("click", () => showInSky(Number(b.dataset.hip))));
+    // measured layout: stack the callouts of each side without overlap, then hang the head zoom under the right column
+    if (wide) requestAnimationFrame(() => {
+      const svg = box.querySelector(".sg-svg"), k = VW / Math.max(1, svg.getBoundingClientRect().width); let maxBottom = f.frameH;
+      ["L", "R"].forEach((side) => {
+        let bottom = -Infinity;
+        [...box.querySelectorAll(`.sg-call[data-side="${side}"]`)].sort((a, b) => a.dataset.ty - b.dataset.ty).forEach((gEl) => {
+          const fo = gEl.querySelector("foreignObject"), h = fo.firstElementChild.getBoundingClientRect().height * k;
+          const y = Math.max(Number(gEl.dataset.ty), bottom + 28);
+          fo.setAttribute("y", y); fo.setAttribute("height", h + 24);
+          const ay = y + Math.min(gEl.classList.contains("gold") ? 120 : 26, h / 2), line = gEl.querySelector("line");
+          line.setAttribute("y2", ay); gEl.querySelector("circle").setAttribute("cy", ay);
+          line.setAttribute("y1", Math.max(Number(gEl.dataset.y0), Math.min(Number(gEl.dataset.y1), ay)));
+          bottom = y + h;
+        });
+        const ins = side === "R" && box.querySelector(".sg-inset-g");
+        if (ins) { const size = Number(ins.dataset.size), iy = Math.max(bottom + 44, 0);
+          ins.querySelector("svg").setAttribute("y", iy); const nf = ins.querySelector(".sg-notes-fo"); nf.setAttribute("y", iy + size + 14);
+          bottom = iy + size + 14 + nf.firstElementChild.getBoundingClientRect().height * k; }
+        maxBottom = Math.max(maxBottom, bottom);
+      });
+      const lg = svg.querySelector(".sg-legend"), ly = Math.max(f.frameH + 62, maxBottom + 56);
+      if (lg) lg.setAttribute("y", ly);
+      svg.setAttribute("viewBox", `0 0 ${VW} ${Math.max(VH, ly + 30)}`);
+    });
+    box.querySelectorAll(".sg-tag").forEach((t) => t.addEventListener("click", () => {
+      const r = SpaceshipSufi.table.rows.find((x) => x.n === Number(t.dataset.n)); if (r) showInSky(r.hip); }));
+  }
+  function buildTable(el, T) {
+    const SU = SpaceshipSufi, esc = (t) => String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;");
+    const nameCell = (r) => { const nm = SU.nameOf(r); return nm ? `${nm.ar ? `<span class="ar">${nm.ar}</span>` : ""}${nm.tr ? `<i>${esc(nm.tr)}</i>` : ""}` : ""; };
+    const row = (r) => `<tr data-hip="${r.hip}" title="${esc(r.fix || r.note || "Show this star in the sky")}">
+      <td class="n"><span class="ar">${r.ab}</span><b>${r.n}</b></td><td>${esc(r.where)}${r.fix ? ' <span class="fix">*</span>' : ""}</td>
+      <td class="mono">${r.lon || "—"}</td><td class="mono">${r.lat || "—"}</td>
+      <td class="mono">${esc(r.mag === "neb" ? "nebula" : r.mag)}</td><td class="mono">${esc(r.ptol ? (r.ptol === "neb" ? "nebula" : r.ptol) : "—")}</td>
+      <td class="mono">${r.v != null ? r.v.toFixed(2) : r.n === 31 ? "M42 ≈ 4" : "—"}</td><td class="nm">${nameCell(r)}</td></tr>`;
+    const fixes = T.rows.filter((r) => r.fix).map((r) => `<li><b>${r.n}</b>: ${esc(r.fix)}</li>`).join("");
+    el.innerHTML = `
+      <label class="stb-opt"><input type="checkbox" class="st-pos964" checked> Mark al-Ṣūfī’s 964 positions in the sky (◇, dashed line to the real star)</label>
+      <div class="stb-scroll"><table>
+        <thead><tr><th>№</th><th>Place on the figure</th><th>Longitude</th><th>Latitude</th><th>al-Ṣūfī</th><th>Ptolemy</th><th>Today</th><th>Arabic name</th></tr></thead>
+        <tbody>${T.rows.map(row).join("")}<tr class="sep"><td colspan="8">Added by al-Ṣūfī in his comments</td></tr>${T.added.map(row).join("")}</tbody>
+      </table></div>
+      <div class="stb-foot"><p>${esc(T.note)}</p><ul>${fixes}</ul><p class="stb-src">${esc(T.source)} Tap a row to find the star.</p></div>`;
+    el.querySelector(".st-pos964").addEventListener("change", (e) => { ui.layers.pos964 = e.target.checked; renderSky(); });
+    el.querySelectorAll("tbody tr[data-hip]").forEach((tr) => tr.addEventListener("click", () => {
+      el.querySelectorAll("tr.sel").forEach((x) => x.classList.remove("sel")); tr.classList.add("sel");
+      const hip = Number(tr.dataset.hip), res = lookAtHip(hip);
+      ui.q(".sufi-table .stb-msg").textContent = res === "below" ? "This star is below the horizon right now – move the time slider to see it rise." : res === "missing" ? "This star is too faint for the sky map." : "";
+    }));
+  }
+  // point the dome at a catalogue star and pin its info box
+  function lookAtHip(hip) {
+    const cat = window.SpaceshipSky && SpaceshipSky.catalog(); if (!cat || !ui) return "missing";
+    const st = cat.stars.find((x) => x[7] === hip); if (!st) return "missing";
+    const w = cur.windows[active], t = skyTime();
+    const v = SpaceshipSky.horizVec(st[0], st[1], w.lat, SpaceshipSky.lstDeg(t, w.lon));
+    const alt = Math.asin(Math.max(-1, Math.min(1, v[2]))) * 180 / Math.PI, az = (Math.atan2(v[0], v[1]) * 180 / Math.PI + 360) % 360;
+    ui.pinned = { key: "s" + hip }; ui.hover = null;
+    Object.assign(ui.cam, { az, alt: Math.max(-10, alt), fov: Math.min(ui.cam.fov, 60) }); renderSky();
+    return alt < 0 ? "below" : "ok";
+  }
+
   function drawTape(az) {
     const tape = ui.q("#ck-tape"); tape.innerHTML = "";
     if (az == null) { tape.innerHTML = '<span class="tk lbl" style="left:50%">NO HEADING</span>'; return; }
@@ -956,6 +1108,7 @@
           </svg>
         </div>
         <canvas class="st-scan" hidden></canvas>
+        <div class="sufi-table" hidden></div>
         <button class="st-skip" type="button" hidden>Skip scan ›</button>
 
         <div class="ly ly-tl">
@@ -964,7 +1117,7 @@
           <div class="ck-layers">
             <button data-l="mw" class="on" title="Milky Way">Milky Way</button><button data-l="cons" class="on" title="Constellation lines">Lines</button>
             <button data-l="ecl" class="on" title="Ecliptic – path of Sun, Moon and planets">Ecliptic</button><button data-l="dso" class="on" title="Galaxies, nebulae, clusters (Messier)">Deep sky</button>
-            <button data-l="grid" title="Alt-azimuth grid">Alt/Az</button><button data-l="eq" title="Equatorial grid">RA/Dec</button><button data-l="labels" class="on" title="Names">Names</button><button data-l="blend" class="on" title="Blend the real window photo in and out every 10 s">Photo blend</button><button data-l="sufi" class="on" title="al-Ṣūfī's constellation drawing (Book of the Fixed Stars, c. 964)">al-Ṣūfī</button>
+            <button data-l="grid" title="Alt-azimuth grid">Alt/Az</button><button data-l="eq" title="Equatorial grid">RA/Dec</button><button data-l="labels" class="on" title="Names">Names</button><button data-l="blend" class="on" title="Blend the real window photo in and out every 10 s">Photo blend</button><button data-l="sufi" class="on" title="al-Ṣūfī's constellation drawing (Book of the Fixed Stars, c. 964)">al-Ṣūfī</button><button data-l="sufiSeg" class="on" title="Boxes around the Arabic writing, translation and phonetics, star-number tags">Segments</button><button class="ck-table-btn" type="button" title="al-Ṣūfī’s table of positions and magnitudes for the year 964">📜 al-Ṣūfī 964</button>
           </div>
           <div class="ck-idrow"><button class="ck-id" type="button" title="Show this ship's ID and link">🔑 Ship ID</button></div>
           <div class="ck-idbox" hidden></div>
@@ -1014,7 +1167,7 @@
       if (best >= 0) selectWindow(best, st);
     });
     ui.timeOffsetH = 0; ui.skyMode = "space";
-    ui.layers = { mw: true, cons: true, ecl: true, dso: true, grid: false, eq: false, labels: true, blend: true, sufi: true };
+    ui.layers = { mw: true, cons: true, ecl: true, dso: true, grid: false, eq: false, labels: true, blend: true, sufi: true, sufiSeg: true, pos964: false };
     ui.inlay = q(".ck-inlay");
     // ship ID: to reopen this ship later (also on another device)
     q(".ck-id").addEventListener("click", () => {
@@ -1031,12 +1184,13 @@
       }));
       box.hidden = false;
     });
-    qa(".ck-layers button").forEach((b) => b.addEventListener("click", () => { const k = b.dataset.l; ui.layers[k] = !ui.layers[k]; b.classList.toggle("on", ui.layers[k]); renderSky(); }));
+    qa(".ck-layers button[data-l]").forEach((b) => b.addEventListener("click", () => { const k = b.dataset.l; ui.layers[k] = !ui.layers[k]; b.classList.toggle("on", ui.layers[k]); renderSky(); }));
     bindNav();
     const modeBtn = q(".ck-mode");
     modeBtn.addEventListener("click", () => { ui.skyMode = ui.skyMode === "space" ? "photo" : "space";
       modeBtn.textContent = ui.skyMode === "space" ? "★ Space" : "▣ Photo"; ui.inlay.classList.toggle("on", ui.skyMode === "photo"); renderSky(); });
     ui.inlay.addEventListener("click", () => modeBtn.click());
+    q(".ck-table-btn").addEventListener("click", () => toggleTable());
     const slider = q(".ck-slider");
     slider.addEventListener("input", () => { ui.timeOffsetH = Number(slider.value); renderSky(); });
     q(".ck-now").addEventListener("click", () => { slider.value = 0; ui.timeOffsetH = 0; renderSky(); });

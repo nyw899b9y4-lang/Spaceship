@@ -241,8 +241,114 @@
           g.shadowColor = "#ffcf6b"; g.shadowBlur = 14 * dpr; g.strokeStyle = "rgba(255,207,107,.85)"; g.lineWidth = 2 * dpr; g.stroke(); g.restore();
           info.regions.push({ poly, o: { type: "region", id: h.id, name: h.name, html: h.html, x: poly.reduce((a, p) => a + p[0], 0) / poly.length, y: poly.reduce((a, p) => a + p[1], 0) / poly.length } });
         });
+        // segmentation of the page: boxes around the Arabic writing, number tags, callouts (translation + phonetics)
+        if (f.ann && L.sufiSeg !== false) drawSegments(f, toScr);
         info.figure = { title: f.title, caption: f.caption };
       });
+    }
+    // al-Ṣūfī's positions for 964, carried to J2000 by precession – shows how far each catalogued place is from the real star
+    if (L.pos964 && window.SpaceshipSufi && cat) {
+      const T = SpaceshipSufi.table, byHip = cat.hipIndex || (cat.hipIndex = Object.fromEntries(cat.stars.map((st) => [st[7], st])));
+      g.save(); g.font = `600 ${Math.round(10 * dpr)}px -apple-system,BlinkMacSystemFont,sans-serif`;
+      T.rows.forEach((r) => {
+        if (r.lon964 == null) return;
+        const [ra, dec] = eclToEqLB(r.lon964 + T.PREC, r.lat964), p = proj(HV(ra, dec)); if (!onScreen(p, 20)) return;
+        const st = byHip[r.hip], q = st && proj(HV(st[0], st[1]));
+        if (q) { g.strokeStyle = "rgba(24,180,216,.55)"; g.lineWidth = 1 * dpr; g.setLineDash([3 * dpr, 3 * dpr]); g.beginPath(); g.moveTo(p[0], p[1]); g.lineTo(q[0], q[1]); g.stroke(); g.setLineDash([]); }
+        const d = 4.5 * dpr; g.strokeStyle = "#18b4d8"; g.lineWidth = 1.4 * dpr; g.beginPath(); g.moveTo(p[0], p[1] - d); g.lineTo(p[0] + d, p[1]); g.lineTo(p[0], p[1] + d); g.lineTo(p[0] - d, p[1]); g.closePath(); g.stroke();
+        if (view.fov < 95) { g.fillStyle = "#18b4d8"; g.textAlign = "left"; g.fillText(String(r.n), p[0] + d + 2 * dpr, p[1] - d); }
+      });
+      g.restore();
+    }
+    function eclToEqLB(lonDeg, latDeg) {
+      const l = lonDeg * D2R, b = latDeg * D2R;
+      const ra = Math.atan2(Math.sin(l) * Math.cos(EPS) - Math.tan(b) * Math.sin(EPS), Math.cos(l));
+      const dec = Math.asin(Math.sin(b) * Math.cos(EPS) + Math.cos(b) * Math.sin(EPS) * Math.sin(l));
+      return [(ra * R2D + 360) % 360, dec * R2D];
+    }
+    function rrect(x, y, w, h, r) { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); }
+    function wrapLines(text, maxW) { const words = text.split(/\s+/), out = []; let line = "";
+      words.forEach((w) => { const t = line ? line + " " + w : w; if (g.measureText(t).width > maxW && line) { out.push(line); line = w; } else line = t; }); if (line) out.push(line); return out; }
+    function drawSegments(f, toScr) {
+      const A = f.ann, CY = "#18b4d8", WH = "#ffffff", OR = "#ffb547", GO = "#f5c542", PK = "#ff6fb5";
+      const AR = (px) => `${Math.round(px * dpr)}px "Noto Naskh Arabic","Geeza Pro","Amiri","Times New Roman",serif`;
+      const SANS = (w, px) => `${w} ${Math.round(px * dpr)}px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif`;
+      // figure bounding box on screen
+      const corners = [[0, 0], [f.frameW, 0], [f.frameW, f.frameH], [0, f.frameH]].map(toScr);
+      const fb = { x0: Math.min(...corners.map((c) => c[0])), x1: Math.max(...corners.map((c) => c[0])), y0: Math.min(...corners.map((c) => c[1])), y1: Math.max(...corners.map((c) => c[1])) };
+      const boxes = A.boxes.map((b) => { const [x0, y0, x1, y1] = b.box; const poly = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]].map(toScr);
+        return { b, poly, c: [poly.reduce((a, p) => a + p[0], 0) / 4, poly.reduce((a, p) => a + p[1], 0) / 4],
+          bb: { x0: Math.min(...poly.map((p) => p[0])), x1: Math.max(...poly.map((p) => p[0])), y0: Math.min(...poly.map((p) => p[1])), y1: Math.max(...poly.map((p) => p[1])) } }; });
+      const polyPath = (poly) => { g.beginPath(); poly.forEach((p, i) => (i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1]))); g.closePath(); };
+      const rectPoly = (r) => [[r[0], r[1]], [r[2], r[1]], [r[2], r[3]], [r[0], r[3]]].map(toScr);
+      // 1) boxes around the writing (gold = al-Haqʿa)
+      g.save();
+      boxes.forEach(({ b, poly }) => { const gold = b.color === "gold"; g.lineWidth = (gold ? 2.4 : 1.6) * dpr; g.strokeStyle = gold ? GO : CY;
+        g.fillStyle = gold ? "rgba(245,197,66,.12)" : "rgba(24,180,216,.08)"; if (gold) { g.shadowColor = GO; g.shadowBlur = 10 * dpr; } else g.shadowBlur = 0;
+        polyPath(poly); g.fill(); g.stroke(); });
+      g.restore();
+      // 1b) al-Haqʿa in detail: pink = the numeral alif (1), gold ring = its three stars on the drawing; and the three real stars
+      boxes.filter((x) => x.b.alif).forEach((x) => {
+        const b = x.b, ap = rectPoly(b.alif), c = toScr([b.ring[0], b.ring[1]]), e = toScr([b.ring[0] + b.ring[2], b.ring[1]]), rad = Math.hypot(e[0] - c[0], e[1] - c[1]);
+        g.save(); g.lineWidth = 2.2 * dpr; g.strokeStyle = PK; g.fillStyle = "rgba(255,111,181,.12)"; polyPath(ap); g.fill(); g.stroke();
+        g.strokeStyle = GO; g.shadowColor = GO; g.shadowBlur = 12 * dpr; g.beginPath(); g.arc(c[0], c[1], rad, 0, 2 * Math.PI); g.stroke(); g.restore();
+        const ring = Array.from({ length: 16 }, (_, k) => [c[0] + rad * Math.cos((k / 16) * 2 * Math.PI), c[1] + rad * Math.sin((k / 16) * 2 * Math.PI)]);
+        x.extra = [ap, ring];
+        const idx = cat && (cat.hipIndex || (cat.hipIndex = Object.fromEntries(cat.stars.map((st) => [st[7], st]))));
+        const pts = (b.real || []).map((h) => idx && idx[h] && proj(HV(idx[h][0], idx[h][1]))).filter(Boolean);
+        if (pts.length) {
+          g.save(); g.strokeStyle = GO; g.lineWidth = 1.6 * dpr; g.shadowColor = GO; g.shadowBlur = 8 * dpr;
+          pts.forEach((p) => { g.beginPath(); g.arc(p[0], p[1], 7 * dpr, 0, 2 * Math.PI); g.stroke(); });
+          const mx = Math.max(...pts.map((p) => p[0])), my = Math.min(...pts.map((p) => p[1]));
+          g.shadowBlur = 0; g.fillStyle = GO; g.font = `600 ${Math.round(11 * dpr)}px -apple-system,BlinkMacSystemFont,sans-serif`; g.textAlign = "left";
+          g.fillText("al-Haqʿa · الهقعة", mx + 12 * dpr, my - 6 * dpr); g.restore();
+        }
+      });
+      // 2) number tags (abjad → digits), screen-aligned so they stay readable on the mirrored page
+      g.save(); g.font = SANS(700, 10.5); g.textAlign = "center"; g.textBaseline = "middle";
+      A.tags.forEach(([n, x, y]) => { const p = toScr([x, y]); if (!onScreen(p)) return; const t = String(n), w = g.measureText(t).width + 8 * dpr, h = 15 * dpr;
+        g.fillStyle = CY; rrect(p[0] - w / 2, p[1] - h / 2, w, h, 4 * dpr); g.fill(); g.fillStyle = "#fff"; g.fillText(t, p[0], p[1] + 0.5 * dpr); });
+      g.restore();
+      // tap a box → its Arabic, translation and phonetics
+      boxes.forEach(({ b, poly, c, extra }) => {
+        const gold = b.color === "gold", st = gold ? ' style="color:#f5c542"' : "";
+        const o = { type: "region", id: "seg-" + b.id, name: b.tr, x: c[0], y: c[1],
+          html: `<span class="seg-ar ar"${st}>${b.ar}</span><span class="seg-tr"${st}>${b.tr}</span><span class="seg-ph">${b.ph}</span>` +
+            (b.inset ? b.inset.notes.map(([col, t, sub]) => `<span style="color:${col}">${t}</span>`).join("") : "") + `<small>al-Ṣūfī · Orion page as seen on the globe</small>` };
+        [poly].concat(extra || []).forEach((pl) => info.regions.push({ poly: pl, o }));
+      });
+      // 3) callouts beside the figure – only when it is large enough on screen to read them
+      if (!view.segCallouts || L.labels === false || fb.y1 - fb.y0 < H * 0.55) return;   // full callouts live in the page view
+      const colW = Math.min(250 * dpr, W * 0.26), gap = 8 * dpr, pad = 7 * dpr, midX = (fb.x0 + fb.x1) / 2;
+      const sides = { L: [], R: [] }; boxes.forEach((bx) => sides[bx.c[0] < midX ? "L" : "R"].push(bx));
+      ["L", "R"].forEach((side) => {
+        const list = sides[side].sort((a, b) => a.c[1] - b.c[1]);
+        const x = side === "L" ? Math.max(gap, fb.x0 - colW - 28 * dpr) : Math.min(W - colW - gap, fb.x1 + 28 * dpr);
+        let cursor = gap;
+        list.forEach((bx) => {
+          // lay out: Arabic (as written), translation, phonetics
+          g.font = AR(15); const la = wrapLines(bx.b.ar, colW); g.font = SANS(600, 12); const lt = wrapLines(bx.b.tr, colW); g.font = SANS("italic 400", 11); const lp = wrapLines(bx.b.ph, colW);
+          const lhA = 20 * dpr, lhT = 16 * dpr, lhP = 14.5 * dpr, h = la.length * lhA + lt.length * lhT + lp.length * lhP + 6 * dpr;
+          let y = Math.max(cursor, bx.c[1] - h / 2); y = Math.min(y, H - h - gap);
+          // leader line from the box edge to the text block
+          const ax = side === "L" ? x + colW + pad : x - pad, ay = y + h / 2;
+          const ex = side === "L" ? bx.bb.x0 : bx.bb.x1, ey = Math.max(bx.bb.y0, Math.min(bx.bb.y1, ay));
+          g.save(); g.fillStyle = "rgba(4,8,22,.74)"; rrect(x - pad, y - pad, colW + 2 * pad, h + 2 * pad, 8 * dpr); g.fill();
+          g.strokeStyle = CY; g.lineWidth = 1.3 * dpr; g.beginPath(); g.moveTo(ex, ey); g.lineTo(ax, ay); g.stroke();
+          g.fillStyle = CY; g.beginPath(); g.arc(ax, ay, 3 * dpr, 0, 2 * Math.PI); g.fill();
+          let yy = y; g.textBaseline = "top";
+          g.font = AR(15); g.fillStyle = CY; g.direction = "rtl"; g.textAlign = "right"; la.forEach((l) => { g.fillText(l, x + colW, yy); yy += lhA; });
+          g.direction = "ltr"; g.textAlign = "left";
+          g.font = SANS(600, 12); g.fillStyle = WH; lt.forEach((l) => { g.fillText(l, x, yy); yy += lhT; }); yy += 3 * dpr;
+          g.font = SANS("italic 400", 11); g.fillStyle = OR; lp.forEach((l) => { g.fillText(l, x, yy); yy += lhP; });
+          g.restore();
+          cursor = y + h + 2 * pad + gap;
+        });
+      });
+      // legend under the figure
+      g.save(); g.font = SANS(600, 11); g.textBaseline = "top"; let lx = Math.max(gap, midX - 210 * dpr); const ly = Math.min(H - 20 * dpr, fb.y1 + 8 * dpr);
+      A.legend.forEach(([col, t]) => { g.fillStyle = col; g.fillText(t, lx, ly); lx += g.measureText(t).width + 16 * dpr; });
+      g.restore();
     }
     info.regionAt = (x, y) => { const r = info.regions.find((rg) => pip([x, y], rg.poly)); return r ? r.o : null; };
     // helper: polyline through sky directions
