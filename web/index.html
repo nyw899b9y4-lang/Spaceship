@@ -80,7 +80,7 @@
   }
   /* ==== big cockpit stage with glass info layers ==== */
   main.wide { max-width: none; padding: 8px 12px 20px; }
-  main.wide > h1, main.wide > p.muted:first-of-type, main.wide > #steps { display: none; }
+  main.wide > h1, main.wide > .page-head, main.wide > p.muted:first-of-type, main.wide > #steps { display: none; }
   .lv-stage { position: relative; height: calc(100vh - 64px); min-height: 560px; border-radius: 18px; overflow: hidden; background: #02040a;
     border: 1px solid rgba(143,211,255,.12); }
   .lv-stage .lv-cockpit { position: absolute; inset: 0; aspect-ratio: auto !important; border: 0; border-radius: 0; min-height: 0; }
@@ -332,7 +332,7 @@
   .sg-list li.on, .sg-list li.pin { border-color: #ffd27a; }
   .sg-list .sg-ar { font: 19px/1.5 "Noto Naskh Arabic", "Geeza Pro", serif; color: #18b4d8; } .sg-list .sg-tr { color: #fff; font-weight: 600; } .sg-list .sg-ph { color: #ffb547; font-style: italic; font-size: 12px; }
   .sg-list li { position: relative; } .sg-list .sg-go { position: absolute; right: 8px; top: 8px; font: 600 11px sans-serif; color: #18b4d8; background: rgba(6,10,26,.8); border: 1px solid rgba(24,180,216,.5); border-radius: 999px; padding: 3px 9px; }
-  .sg-list .sg-ar { padding-right: 64px; }
+  .sg-list .sg-ar { padding-right: 104px; }
   .sg-legend-h { font-size: 11px; margin: 8px 2px 0; } .stb-src { color: #6f7a9c; font-size: 11px; margin: 8px 2px 0; }
   .sg-box.gold { stroke: #f5c542; fill: rgba(245,197,66,.08); stroke-width: 5; }
   .sg-alif { fill: rgba(255,111,181,.10); stroke: #ff6fb5; stroke-width: 4; cursor: pointer; }
@@ -344,12 +344,34 @@
   .sg-mark.gold circle { fill: #f5c542; }
   .sg-list li.gold { border-color: #f5c542; } .sg-list li.gold .sg-ar, .sg-list li.gold .sg-tr { color: #f5c542; }
   .sg-list-inset { display: flex; gap: 10px; align-items: flex-start; margin-top: 8px; } .sg-list-inset p { margin: 0; font-size: 11.5px; font-weight: 600; }
+  .lang-switch { display: inline-flex; border: 1px solid rgba(143,211,255,.35); border-radius: 999px; overflow: hidden; flex: 0 0 auto; }
+  .lang-switch button { font: 700 11px/1 -apple-system, BlinkMacSystemFont, sans-serif; padding: 6px 9px; border: 0; border-radius: 0; background: transparent; color: #8e98b8; cursor: pointer; min-width: 0; }
+  .lang-switch button.on { background: rgba(24,180,216,.25); color: #fff; }
+  /* violet = the Tresses (dhawāʾib) */
+  .sg-box.violet { stroke: #b98cff; fill: rgba(185,140,255,.10); stroke-width: 5; }
+  .sg-ring.violet { stroke: #b98cff; stroke-width: 4; }
+  .sg-curve { fill: none; stroke: #b98cff; stroke-width: 3; stroke-dasharray: 12 9; opacity: .9; }
+  .sg-tag.violet rect { fill: #9b6bff; }
+  .sg-call.violet line { stroke: #b98cff; stroke-width: 4; } .sg-call.violet circle { fill: #b98cff; }
+  .sg-text.violet { border: 4px solid #b98cff; border-radius: 18px; padding: 14px 20px; background: rgba(29,36,51,.6); }
+  .sg-text.violet .sg-ar, .sg-text.violet .sg-tr { color: #c9a8ff; }
+  .sg-text.violet .sg-go { left: 22px; top: 18px; color: #c9a8ff; border-color: rgba(185,140,255,.6); background: rgba(185,140,255,.1); }
+  .sg-mark.violet circle { fill: #9b6bff; }
+  .sg-list li.violet { border-color: #b98cff; } .sg-list li.violet .sg-ar, .sg-list li.violet .sg-tr { color: #c9a8ff; }
+  .sg-names { margin: 8px 0 2px; display: flex; flex-direction: column; gap: 4px; }
+  .sg-text .sg-names p { font-size: 22px; line-height: 1.32; color: #f3e2b8; }
+  .sg-text .sg-names b { font: 30px/1.2 "Noto Naskh Arabic", "Geeza Pro", "Amiri", serif; color: #f5c542; margin-right: 6px; }
+  .sg-text .sg-names i { color: #ffb547; }
+  .sg-list .sg-names p { font-size: 12px; color: #f3e2b8; } .sg-list .sg-names b { font: 16px "Noto Naskh Arabic", "Geeza Pro", serif; color: #f5c542; } .sg-list .sg-names i { color: #ffb547; }
+  .ck-tip .seg-names { display: flex; flex-direction: column; gap: 3px; margin: 4px 0; } .ck-tip .seg-names span { color: #f3e2b8; font-size: 11.5px; }
+  .sufi-table tr.violet td.n b { color: #c9a8ff; } .sufi-table tr.gold td.n b { color: #f5c542; }
   .ck-hint { display: block; margin-top: 6px; color: #6f7a9c; font-size: 10px; }
 </style>
 </head>
 <body>
 <main>
-  <h1>🚀 Spaceship</h1>
+  <div class="row between page-head" style="align-items:center"><h1>🚀 Spaceship</h1>
+    <div class="lang-switch" role="group" aria-label="Language"><button type="button" data-lang="de">DE</button><button type="button" data-lang="en">EN</button></div></div>
   <p class="muted">Turn your apartment into a spaceship: its real shape, its windows, and the view from each window into the sky.</p>
   <div class="steps" id="steps"><span></span><span></span><span></span><span></span></div>
 
@@ -447,6 +469,7 @@
   <section data-step="5" hidden>
     <div class="row between" style="margin-bottom:10px">
       <h2 style="margin:0" id="ship-title">🚀 Your spaceship</h2>
+      <div class="lang-switch" role="group" aria-label="Language"><button type="button" data-lang="de">DE</button><button type="button" data-lang="en">EN</button></div>
       <button class="secondary small" data-back="4" id="launch-back">← Back</button>
       <a class="btn secondary small" id="build-own" href="./" hidden style="text-decoration:none;font-size:14px;padding:6px 10px">Build your own</a>
     </div>
@@ -458,19 +481,22 @@
   <p class="muted" style="font-size:12px;margin-top:24px">Imagery: © swisstopo (Switzerland), © Esri and its data providers (elsewhere). Buildings & search: © OpenStreetMap contributors.</p>
 </main>
 
-<script src="config.js?v=202611081824"></script>
+<script src="i18n.js?v=202611081855"></script>
+<script src="config.js?v=202611081855"></script>
 <script src="vendor/leaflet/leaflet.js"></script>
 <script src="vendor/exifr-7.1.3.full.umd.js"></script>
 <script src="vendor/astronomy-engine-2.1.19.min.js"></script>
-<script src="scanfx.js?v=202611081824"></script>
-<script src="sound.js?v=202611081824"></script>
-<script src="compose.js?v=202611081824"></script>
-<script src="sky.js?v=202611081824"></script>
-<script src="skydome.js?v=202611081824"></script>
-<script src="sufi.js?v=202611081824"></script>
-<script src="launch.js?v=202611081824"></script>
+<script src="scanfx.js?v=202611081855"></script>
+<script src="sound.js?v=202611081855"></script>
+<script src="compose.js?v=202611081855"></script>
+<script src="sky.js?v=202611081855"></script>
+<script src="skydome.js?v=202611081855"></script>
+<script src="sufi.js?v=202611081855"></script>
+<script src="launch.js?v=202611081855"></script>
 <script>
 "use strict";
+const t = (x, v) => (window.I18N ? I18N.t(x, v) : x);
+const DIR = (a) => (window.I18N ? I18N.dir(a) : a);
 const cfg = window.SPACESHIP_CONFIG || {};
 const backendReady = Boolean(cfg.SUPABASE_URL && cfg.SUPABASE_KEY);
 const $ = (id) => document.getElementById(id);
@@ -536,7 +562,7 @@ function nearestWall(lat, lon) {
   const [qlat, qlon] = toLL(best.qx, best.qy, ref);
   return { dist: best.dist, lat: qlat, lon: qlon, azimuth: az, wall_length_m: best.len };
 }
-const compass = (az) => ["N", "NE", "E", "SE", "S", "SW", "W", "NW"][Math.round(az / 45) % 8];
+const compass = (az) => DIR(["N", "NE", "E", "SE", "S", "SW", "W", "NW"][Math.round(az / 45) % 8]);
 
 // ---------------- STEP 1: address search ----------------
 const inSwitzerland = (lat, lon) => lat > 45.8 && lat < 47.9 && lon > 5.9 && lon < 10.6;
@@ -689,10 +715,10 @@ function renderWindows() {
   const ul = $("winlist"); ul.innerHTML = "";
   state.windows.forEach((w, i) => {
     const li = document.createElement("li");
-    const dir = w.wall_azimuth_deg != null ? `${Math.round(w.wall_azimuth_deg)}° ${compass(w.wall_azimuth_deg)}` : "direction from phone";
+    const dir = w.wall_azimuth_deg != null ? `${Math.round(w.wall_azimuth_deg)}° ${compass(w.wall_azimuth_deg)}` : t("direction from phone");
     li.innerHTML = `<span class="badge">${i + 1}</span>
       <div class="grow"><input type="text" maxlength="40" placeholder="Room (e.g. Living room)" value="${esc(w.label)}">
-      <div class="muted" style="font-size:12px;margin-top:2px">looks ${dir}</div></div>
+      <div class="muted" style="font-size:12px;margin-top:2px">${t("looks {dir}", { dir })}</div></div>
       <button class="secondary small" title="Remove">✕</button>`;
     li.querySelector("input").addEventListener("input", (ev) => (w.label = ev.target.value));
     li.querySelector("button").addEventListener("click", () => { state.windows.splice(i, 1); renderWindows(); });
@@ -771,7 +797,7 @@ async function startCamera() {
     $("cam-start").hidden = true; $("cam-shoot").hidden = false; $("cam-retake").hidden = true;
     updateHud();
   } catch (err) {
-    notice($("cam-msg"), "err", "Camera not available (" + esc(err.name || err.message) + "). Use “Upload a photo instead”.");
+    notice($("cam-msg"), "err", t("Camera not available ({e}). Use “Upload a photo instead”.", { e: esc(err.name || err.message) }));
   }
 }
 function stopCamera() { if (stream) { stream.getTracks().forEach((t) => t.stop()); stream = null; } }
@@ -805,7 +831,7 @@ $("cam-file").addEventListener("change", async (e) => {
   for (let k = 0; k < files.length && start + k < state.windows.length; k++) {
     state.camIndex = start + k; await useUpload(files[k]);
   }
-  if (files.length > state.windows.length - start) notice($("cam-msg"), "info", `${files.length} photos selected, but only ${state.windows.length - start} window(s) left – the extra photos were ignored. Add more windows on the map to use them.`);
+  if (files.length > state.windows.length - start) notice($("cam-msg"), "info", t("{n} photos selected, but only {k} window(s) left – the extra photos were ignored. Add more windows on the map to use them.", { n: files.length, k: state.windows.length - start }));
   stopCamera(); openWindow(state.camIndex);
 });
 async function useUpload(file) {
@@ -835,20 +861,20 @@ function showShot(w) {
   $("video").hidden = true; $("shot").src = w.photo.url; $("shot").hidden = false;
   $("crosshair").hidden = true; $("hud").hidden = true;
   $("cam-start").hidden = true; $("cam-shoot").hidden = true; $("cam-retake").hidden = false;
-  const c = w.capture || {}; let info = "✓ Photo saved";
+  const c = w.capture || {}; let info = t("✓ Photo saved");
   if (c.camera_azimuth_deg != null) {
-    info += ` · phone pointed ${Math.round(c.camera_azimuth_deg)}° ${compass(c.camera_azimuth_deg)}, tilt ${Math.round(c.camera_elevation_deg)}°`;
+    info += t(" · phone pointed {az}° {dir}, tilt {el}°", { az: Math.round(c.camera_azimuth_deg), dir: compass(c.camera_azimuth_deg), el: Math.round(c.camera_elevation_deg) });
     if (w.wall_azimuth_deg != null) {
       const diff = Math.round(Math.abs(((c.camera_azimuth_deg - w.wall_azimuth_deg + 540) % 360) - 180));
-      info += diff > 35 ? `<br><span style="color:var(--warn)">That's ${diff}° away from the wall direction on the map – fine if you shot at an angle; otherwise retake.</span>` : ` (wall: ${Math.round(w.wall_azimuth_deg)}°)`;
+      info += diff > 35 ? `<br><span style="color:var(--warn)">${t("That's {d}° away from the wall direction on the map – fine if you shot at an angle; otherwise retake.", { d: diff })}</span>` : t(" (wall: {w}°)", { w: Math.round(w.wall_azimuth_deg) });
     }
-  } else if (c.camera_elevation_deg != null) info += ` · tilt ${Math.round(c.camera_elevation_deg)}°`;
+  } else if (c.camera_elevation_deg != null) info += t(" · tilt {el}°", { el: Math.round(c.camera_elevation_deg) });
   notice($("cam-msg"), "ok", info);
   renderThumbs(); updateCamNext();
 }
 function openWindow(i) {
   state.camIndex = i; const w = state.windows[i];
-  $("cam-title").textContent = `3 · View from window ${i + 1} of ${state.windows.length}` + (w.label ? ` – ${w.label}` : "");
+  $("cam-title").textContent = t("3 · View from window {i} of {n}", { i: i + 1, n: state.windows.length }) + (w.label ? ` – ${w.label}` : "");
   $("cam-msg").className = ""; $("cam-msg").innerHTML = "";
   if (w.photo) showShot(w);
   else {
@@ -873,9 +899,9 @@ function updateCamNext() {
   const last = state.camIndex >= state.windows.length - 1, done = state.windows.filter((w) => w.photo).length;
   $("cam-next").disabled = false;
   $("cam-next").hidden = last;
-  $("cam-next").textContent = `Next window (${state.camIndex + 2} of ${state.windows.length}) ›`;
+  $("cam-next").textContent = t("Next window ({a} of {b}) ›", { a: state.camIndex + 2, b: state.windows.length });
   $("cam-done").disabled = done === 0;
-  $("cam-done").textContent = `✓ Done – review & save (${done}/${state.windows.length} photos)`;
+  $("cam-done").textContent = t("✓ Done – review & save ({d}/{n} photos)", { d: done, n: state.windows.length });
 }
 $("cam-next").addEventListener("click", () => { if (state.camIndex < state.windows.length - 1) openWindow(state.camIndex + 1); });
 $("cam-done").addEventListener("click", () => { stopCamera(); show(4); });
@@ -930,7 +956,7 @@ $("send").addEventListener("click", async () => {
   try {
     const paths = {}, withPhotos = state.windows.filter((w) => w.photo);
     for (let i = 0; i < withPhotos.length; i++) {
-      const w = withPhotos[i]; notice(msg, "info", `Uploading photo ${i + 1} of ${withPhotos.length}…`);
+      const w = withPhotos[i]; notice(msg, "info", t("Uploading photo {i} of {n}…", { i: i + 1, n: withPhotos.length }));
       const path = `${id}/window-${state.windows.indexOf(w) + 1}.jpg`;
       const up = await fetch(`${cfg.SUPABASE_URL}/storage/v1/object/${cfg.PHOTO_BUCKET}/${path}`,
         { method: "POST", headers: headers({ "Content-Type": "image/jpeg" }), body: w.photo.blob });
@@ -942,13 +968,13 @@ $("send").addEventListener("click", async () => {
       method: "POST", headers: headers({ "Content-Type": "application/json", Prefer: "return=minimal" }), body: JSON.stringify(payload(id, paths)) });
     if (!res.ok) throw new Error("saving failed (" + res.status + ")");
     const link = location.origin + location.pathname + "?ship=" + id;
-    notice(msg, "ok", `✓ Saved – your spaceship is registered.<br>Your spaceship link (keep it – it opens your ship any time):<br><a style="color:var(--ok)" href="${link}">${link}</a>`);
+    notice(msg, "ok", `${t("✓ Saved – your spaceship is registered.")}<br>${t("Your spaceship link (keep it – it opens your ship any time):")}<br><a style="color:var(--ok)" href="${link}">${link}</a>`);
     try { history.replaceState(null, "", "?ship=" + id); } catch (_) {}
     state.loadedId = id; rememberShip(id, state.address.label);
     state.savedLink = link;
     setTimeout(() => show(5), 1800);
   } catch (e) {
-    notice(msg, "err", "Could not send: " + esc(e.message) + ". Please try again."); $("send").disabled = false;
+    notice(msg, "err", t("Could not send: {e}. Please try again.", { e: esc(e.message) })); $("send").disabled = false;
   }
 });
 
@@ -974,12 +1000,14 @@ async function loadShip(id) {
     $("floor").value = a.floor || 0;
     $("addr-msg").className = ""; $("addr-msg").innerHTML = "";
     $("launch-back").hidden = true; $("build-own").hidden = false;
-    $("ship-title").textContent = "🚀 Spaceship · " + (a.address || "").split(/\s\d{4}\s/)[0];
+    state.shipName = (a.address || "").split(/\s\d{4}\s/)[0];
+    $("ship-title").textContent = t("🚀 Spaceship · {name}", { name: state.shipName });
     show(5);
     const saved = new Date(a.created_at);
-    notice($("ship-msg"), "info", `Registered ${saved.toLocaleDateString()} · ${state.windows.length} window${state.windows.length === 1 ? "" : "s"} · floor ${a.floor || 0}`);
+    state.savedAt = saved;
+    notice($("ship-msg"), "info", t("Registered {date} · {n} window(s) · floor {f}", { date: saved.toLocaleDateString(window.I18N && I18N.lang === "de" ? "de-CH" : undefined), n: state.windows.length, f: a.floor || 0 }));
   } catch (e) {
-    notice($("addr-msg"), "err", "Could not open this spaceship: " + esc(e.message) + ". You can build a new one below.");
+    notice($("addr-msg"), "err", t("Could not open this spaceship: {e}. You can build a new one below.", { e: esc(e.message) }));
   }
 }
 // ---------------- my ships on this device + open by ID ----------------
@@ -1005,6 +1033,15 @@ $("open-form").addEventListener("submit", (e) => {
   $("open-msg").innerHTML = ""; loadShip(m[0].toLowerCase());
 });
 renderMyShips();
+// language switch: re-write the texts that were composed in code
+if (window.I18N) I18N.on(() => {
+  if (state.shipName) $("ship-title").textContent = t("🚀 Spaceship · {name}", { name: state.shipName });
+  if (state.savedAt) notice($("ship-msg"), "info", t("Registered {date} · {n} window(s) · floor {f}", { date: state.savedAt.toLocaleDateString(I18N.lang === "de" ? "de-CH" : undefined), n: state.windows.length, f: $("floor").value || 0 }));
+  try { renderWindows(); } catch (_) {}
+  try { if (state.windows.length) { updateCamNext(); refreshSend(); const w = state.windows[state.camIndex];
+    if (w) $("cam-title").textContent = t("3 · View from window {i} of {n}", { i: state.camIndex + 1, n: state.windows.length }) + (w.label ? ` – ${w.label}` : ""); } } catch (_) {}
+  renderMyShips();
+});
 const shipParam = new URLSearchParams(location.search).get("ship");
 if (shipParam && backendReady) loadShip(shipParam); else show(1);
 </script>

@@ -178,15 +178,15 @@
         g.globalAlpha = la; g.fillStyle = "rgba(220,235,255,.9)"; g.textAlign = "left";
         g.font = `500 ${12 * dpr}px -apple-system, BlinkMacSystemFont, sans-serif`;
         const lx = Math.max(16 * dpr, ox + S * 0.02), ly = oy + S * 0.06;
-        g.fillText("SPECTRAL SCAN · 200 m", lx, ly);
+        g.fillText((window.I18N ? I18N.t("SPECTRAL SCAN · 200 m") : "SPECTRAL SCAN · 200 m"), lx, ly);
         g.font = `${11 * dpr}px -apple-system, BlinkMacSystemFont, sans-serif`; g.fillStyle = "rgba(200,215,240,.7)";
         labels.slice(0, Math.min(labels.length, 1 + Math.floor(Math.max(0, t - 2) / 1.2))).forEach((l, i) => g.fillText(l, lx, ly + (i + 1) * 18 * dpr));
         // spectrum legend
         const lw = Math.min(220 * dpr, S * 0.35), lh = 6 * dpr, lx2 = W - lw - 20 * dpr, ly2 = oy + S - 30 * dpr;
         for (let i = 0; i < lw; i++) { g.fillStyle = css(spectrum(i / lw)); g.fillRect(lx2 + i, ly2, 1, lh); }
         g.fillStyle = "rgba(200,215,240,.75)"; g.font = `${10 * dpr}px -apple-system, BlinkMacSystemFont, sans-serif`;
-        g.textAlign = "left"; g.fillText("sealed", lx2, ly2 + lh + 13 * dpr); g.textAlign = "right"; g.fillText("dense vegetation", lx2 + lw, ly2 + lh + 13 * dpr);
-        g.textAlign = "center"; g.fillText("biodiversity spectrum", lx2 + lw / 2, ly2 - 7 * dpr);
+        g.textAlign = "left"; g.fillText((window.I18N ? I18N.t("sealed") : "sealed"), lx2, ly2 + lh + 13 * dpr); g.textAlign = "right"; g.fillText((window.I18N ? I18N.t("dense vegetation") : "dense vegetation"), lx2 + lw, ly2 + lh + 13 * dpr);
+        g.textAlign = "center"; g.fillText((window.I18N ? I18N.t("biodiversity spectrum") : "biodiversity spectrum"), lx2 + lw / 2, ly2 - 7 * dpr);
       }
       g.globalAlpha = 1;
       if (t >= DUR) { stop(); opts.onDone && opts.onDone(); return; }

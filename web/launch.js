@@ -521,8 +521,9 @@
     const label = cur.address.label || "", name = label.split(/\s\d{4}\s/)[0].toUpperCase();
     const town = ((label.match(/\d{4,5}\s+(.+)$/) || [])[1] || "").toUpperCase();
     const alt = Math.round((1 / m) * (W / ship.scale) * 1.2);
-    cap.textContent = t < 2 ? `APPROACHING ${town || "TARGET"} · ALT ${alt} M` : t < 6 ? `SCANNING ${name} + 200 M` : t < 8.5 ? "COMPOSING SHIP DNA…"
-      : t < 10.5 ? `TARGET LOCK: ${name}` : t < 12.2 ? "CONVERTING STRUCTURE…" : t < 13.6 ? "FITTING MODULES" : t < 14.4 ? "SYSTEMS ONLINE" : "LIFT-OFF";
+    const T_ = window.I18N ? I18N.t : (x, v) => x.replace(/\{(\w+)\}/g, (m, k) => v[k]);
+    cap.textContent = t < 2 ? T_("APPROACHING {town} · ALT {alt} M", { town: town || T_("TARGET"), alt }) : t < 6 ? T_("SCANNING {name} + 200 M", { name }) : t < 8.5 ? T_("COMPOSING SHIP DNA…")
+      : t < 10.5 ? T_("TARGET LOCK: {name}", { name }) : t < 12.2 ? T_("CONVERTING STRUCTURE…") : t < 13.6 ? T_("FITTING MODULES") : t < 14.4 ? T_("SYSTEMS ONLINE") : T_("LIFT-OFF");
     cap.classList.toggle("go", t >= 14.4);
     const hud0 = ui.q(".lv-scanhud"); if (hud0) hud0.hidden = true;   // the scan now plays on the main stage
     if (out > 0) it.cv.style.opacity = String(1 - out);
@@ -580,7 +581,14 @@
   }
 
   // ---------- cockpit ----------
-  const compass = (az) => ["N", "NE", "E", "SE", "S", "SW", "W", "NW"][Math.round(az / 45) % 8];
+  const t = (s, v) => (window.I18N ? I18N.t(s, v) : s);
+  const N = (n, d) => (window.I18N ? I18N.num(n, d) : Number(n).toFixed(d));
+  const DIR = (a) => (window.I18N ? I18N.dir(a) : a);
+  const compass = (az) => DIR(["N", "NE", "E", "SE", "S", "SW", "W", "NW"][Math.round(az / 45) % 8]);
+  function selectWindowReadouts() {
+    if (!ui || !cur) return; const vv = viewOf(cur.windows[active]);
+    ui.q("#ck-src").textContent = vv.az == null ? t("HDG UNKNOWN") : `${t("VIEW")} ${Math.round(vv.az)}° (${t(vv.azSrc)}) · ${vv.el >= 0 ? "+" : ""}${Math.round(vv.el)}° (${t(vv.elSrc)})`;
+  }
   function selectWindow(i, st) {
     active = i; const w = st.windows[i], c = w.capture || {};
     const az = w.wall_azimuth_deg != null ? w.wall_azimuth_deg : c.camera_azimuth_deg;
@@ -595,13 +603,13 @@
     }
     else ui.view.innerHTML = '<div class="nosignal">NO SIGNAL</div>';
     const floor = Number(document.getElementById("floor").value) || 0;
-    ui.q("#ck-name").textContent = (w.label || "Window " + (i + 1)).toUpperCase();
+    ui.q("#ck-name").textContent = (w.label || (window.I18N && I18N.lang === "de" ? "Fenster " : "Window ") + (i + 1)).toUpperCase();
     ui.q("#ck-hdg").textContent = az != null ? `${String(Math.round(az)).padStart(3, "0")}° ${compass(az)}` : "---";
     ui.q("#ck-tilt").textContent = tilt != null ? `${tilt >= 0 ? "+" : ""}${Math.round(tilt)}°` : "--";
     ui.q("#ck-alt").textContent = `DECK ${floor} · ~${Math.max(0, floor * 3 + 1.5).toFixed(0)} M`;
     ui.q("#ck-pos").textContent = `${w.lat.toFixed(5)}N ${w.lon.toFixed(5)}E`;
     const vv = viewOf(w);
-    ui.q("#ck-src").textContent = vv.az == null ? "HDG UNKNOWN" : `VIEW ${Math.round(vv.az)}° (${vv.azSrc}) · ${vv.el >= 0 ? "+" : ""}${Math.round(vv.el)}° (${vv.elSrc})`;
+    selectWindowReadouts();
     drawTape(az);
     // horizon line tilts with the recorded camera elevation
     ui.qa(".ck-win").forEach((b, k) => b.classList.toggle("on", k === i));
@@ -635,10 +643,11 @@
     if (!ui) return;
     const root = ui.root.querySelector("#lv-spec"); ui.spec = res;
     const st = res.stats, agility = Math.round((st.turn + st.tilt) / 2);
-    const bars = [["Speed", st.speed], ["Agility", agility], ["Shield", st.shield], ["Sensors", st.sensors], ["Energy", st.energy]]
+    const bars = [[t("Speed"), st.speed], [t("Agility"), agility], [t("Shield"), st.shield], [t("Sensors"), st.sensors], [t("Energy"), st.energy]]
       .map(([l, v]) => `<div class="cp-bar"><span>${l}</span><i><em style="width:${v}%"></em></i><b>${v}</b></div>`).join("");
-    const tags = res.capabilities.map((c) => `<span title="${c.desc}">${c.name}</span>`).join("");
-    root.innerHTML = `<div class="ly-head"><span>Composition</span><small>200 m · ${res.status.satellite === "ok" && res.status.osm === "ok" ? "complete" : "scanning…"}</small></div>
+    const de = window.I18N && I18N.lang === "de";
+    const tags = res.capabilities.map((c) => `<span title="${de && c.de ? c.de[1] : c.desc}">${de && c.de ? c.de[0] : c.name}</span>`).join("");
+    root.innerHTML = `<div class="ly-head"><span>${t("Composition")}</span><small>200 m · ${t(res.status.satellite === "ok" && res.status.osm === "ok" ? "complete" : "scanning…")}</small></div>
       <div class="cp-row"><div class="cp-thumb"></div><div class="cp-bars">${bars}</div></div>
       <div class="cp-tags">${tags}</div>
       <div class="cp-actions"><button type="button" class="cp-scan">↻ Scan</button>
@@ -670,9 +679,9 @@
     cv.hidden = false; skip.hidden = false; cv.style.opacity = 1;
     const res = ui.spec, sh = res.satellite && res.satellite.share, o = res.osm, geo = res.geometry;
     const labels = [];
-    if (sh) { labels.push(`greenery ${Math.round(sh.veg * 100)} %`); labels.push(`sealed & paved ${Math.round((sh.paved + sh.roof) * 100)} %`); }
-    if (o) labels.push(`${o.buildings} structures · ${o.trees} trees`);
-    labels.push(`${geo.windows} windows · ${Math.round(geo.spreadDeg)}° view`);
+    if (sh) { labels.push(t("greenery {p} %", { p: Math.round(sh.veg * 100) })); labels.push(t("sealed & paved {p} %", { p: Math.round((sh.paved + sh.roof) * 100) })); }
+    if (o) labels.push(t("{b} structures · {t} trees", { b: o.buildings, t: o.trees }));
+    labels.push(t("{w} windows · {d}° view", { w: geo.windows, d: Math.round(geo.spreadDeg) }));
     const done = () => {
       if (!ui) return;
       cv.hidden = true; skip.hidden = true; ui.scanCtl = null;
@@ -731,8 +740,8 @@
       (cons && cons.length ? cons.slice(0, 3).join(" · ").toUpperCase() : "NO CONSTELLATION IN VIEW") +
       (named && named.length ? " ★ " + named.slice(0, 3).join(", ") : "");
     ui.q("#ck-sun").textContent = info && info.sunAlt != null ? `SUN ${info.sunAlt >= 0 ? "+" : ""}${Math.round(info.sunAlt)}° ${info.sunAlt > 0 ? "DAY" : info.sunAlt > -12 ? "TWILIGHT" : "NIGHT"}` : "";
-    ui.q("#ck-time").textContent = t.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-    ui.q("#ck-date").textContent = ui.timeOffsetH ? `${ui.timeOffsetH > 0 ? "+" : ""}${ui.timeOffsetH} H · ${t.toLocaleDateString()}` : "NOW · LIVE";
+    ui.q("#ck-time").textContent = t.toLocaleTimeString(window.I18N && I18N.lang === "de" ? "de-CH" : [], { hour: "2-digit", minute: "2-digit" });
+    ui.q("#ck-date").textContent = ui.timeOffsetH ? `${ui.timeOffsetH > 0 ? "+" : ""}${ui.timeOffsetH} H · ${t.toLocaleDateString(window.I18N && I18N.lang === "de" ? "de-CH" : undefined)}` : "NOW · LIVE";
   }
 
   function renderDome() {
@@ -757,11 +766,11 @@
     const named = info.inView.filter((x) => x.type !== "constellation").map((x) => x.name);
     ui.q("#ck-sky-info").textContent = (cons.length ? cons.slice(0, 3).join(" · ").toUpperCase() : "") + (named.length ? " ★ " + named.slice(0, 3).join(", ") : "");
     ui.q("#ck-hdg").textContent = `${String(Math.round(ui.cam.az)).padStart(3, "0")}° ${compass(ui.cam.az)}`;
-    ui.q("#ck-tilt").textContent = `${ui.cam.alt >= 0 ? "+" : ""}${Math.round(ui.cam.alt)}° · FOV ${Math.round(ui.cam.fov)}°`;
+    ui.q("#ck-tilt").textContent = `${ui.cam.alt >= 0 ? "+" : ""}${Math.round(ui.cam.alt)}° · ${I18N.t("FOV")} ${Math.round(ui.cam.fov)}°`;
     drawTape(ui.cam.az);
-    ui.q("#ck-sun").textContent = `SUN ${info.sunAlt >= 0 ? "+" : ""}${Math.round(info.sunAlt)}° ${info.sunAlt > 0 ? "DAY" : info.sunAlt > -12 ? "TWILIGHT" : "NIGHT"}`;
-    ui.q("#ck-time").textContent = t.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-    ui.q("#ck-date").textContent = ui.timeOffsetH ? `${ui.timeOffsetH > 0 ? "+" : ""}${ui.timeOffsetH} H · ${t.toLocaleDateString()}` : "NOW · LIVE";
+    ui.q("#ck-sun").textContent = `${I18N.t("SUN")} ${info.sunAlt >= 0 ? "+" : ""}${Math.round(info.sunAlt)}° ${I18N.t(info.sunAlt > 0 ? "DAY" : info.sunAlt > -12 ? "TWILIGHT" : "NIGHT")}`;
+    ui.q("#ck-time").textContent = t.toLocaleTimeString(window.I18N && I18N.lang === "de" ? "de-CH" : [], { hour: "2-digit", minute: "2-digit" });
+    ui.q("#ck-date").textContent = ui.timeOffsetH ? `${ui.timeOffsetH > 0 ? "+" : ""}${ui.timeOffsetH} H · ${t.toLocaleDateString(window.I18N && I18N.lang === "de" ? "de-CH" : undefined)}` : "NOW · LIVE";
   }
   // drag = look around, wheel / pinch = zoom, double-click = back to the window view
   function bindNav() {
@@ -787,46 +796,45 @@
   }
 
   // ---------- hover / tap: star info ----------
-  const compass16 = (az) => ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"][Math.round(az / 22.5) % 16];
+  const compass16 = (az) => DIR(["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"][Math.round(az / 22.5) % 16]);
   function magWords(m) {
-    return m < 0 ? "one of the brightest objects in the sky" : m < 1 ? "one of the brightest stars" : m < 2 ? "very bright"
-         : m < 3.5 ? "clearly visible" : m < 5 ? "visible to the eye" : "faint – needs a dark sky";
+    return t(m < 0 ? "one of the brightest objects in the sky" : m < 1 ? "one of the brightest stars" : m < 2 ? "very bright"
+         : m < 3.5 ? "clearly visible" : m < 5 ? "visible to the eye" : "faint – needs a dark sky");
   }
-  // al-Ṣūfī / Ptolemy: number in abjad letters + Arabic name
-  // al-Ṣūfī / Ptolemy: number in abjad letters, Arabic name, 964 position and magnitudes
+  // al-Ṣūfī / Ptolemy: number in abjad letters, Arabic name (+ translation), 964 position and magnitudes
   function sufiHtml(o) {
     const SU = window.SpaceshipSufi, S = SU && SU.star(o.hip); if (!S) return "";
-    const c = SU.con(S.con) || {}, nm = SU.nameOf(S);
+    const c = SU.con(S.con) || {}, nm = SU.nameOf(S), col = nm && nm.color ? SU.COLORS[nm.color] : null, st = col ? ` style="color:${col}"` : "";
     const head = S.added
-      ? `<span class="ck-sufi"><span class="ar">${S.ab}</span> = <em>${S.n}</em> · added by al-Ṣūfī to ${c.tr || S.con} (not in Ptolemy)</span>`
-      : `<span class="ck-sufi"><span class="ar">${S.ab}</span> = <em>${S.n}</em> of the ${c.count || "?"} stars of ${c.tr || S.con} – ${S.where}</span>`;
-    const name = nm ? `<span class="ck-sufi">${nm.ar ? `<span class="ar">${nm.ar}</span> ` : ""}${nm.tr ? `<i class="seg-ph">${nm.tr}</i> – ` : ""}${nm.en || ""}${nm.en2 ? ` · ${nm.en2}` : ""}</span>` : "";
-    const pos = S.lon ? `<span class="ck-sufi">964: ${S.lon}, ${S.lat}${S.fix ? " *" : ""} · al-Ṣūfī ${SU.magText(S.mag)} · Ptolemy ${SU.magText(S.ptol)}</span>`
+      ? `<span class="ck-sufi">${t("{ab} = {n} · added by al-Ṣūfī to {con} (not in Ptolemy)", { ab: `<span class="ar">${S.ab}</span>`, n: `<em>${S.n}</em>`, con: c.tr || S.con })}</span>`
+      : `<span class="ck-sufi">${t("{ab} = {n} of the {c} stars of {con} – {where}", { ab: `<span class="ar">${S.ab}</span>`, n: `<em>${S.n}</em>`, c: c.count || "?", con: c.tr || S.con, where: S.where })}</span>`;
+    const name = nm ? `<span class="ck-sufi"${st}>${nm.ar ? `<span class="ar"${st}>${nm.ar}</span> ` : ""}${nm.tr ? `<i class="seg-ph">${nm.tr}</i> – ` : ""}${nm.en || ""}${nm.en2 ? ` · ${nm.en2}` : ""}</span>` : "";
+    const pos = S.lon ? `<span class="ck-sufi">${t("964: {lon}, {lat} · al-Ṣūfī {m} · Ptolemy {p}", { lon: S.lon, lat: S.lat + (S.fix ? " *" : ""), m: SU.magText(S.mag), p: SU.magText(S.ptol) })}</span>`
       : `<span class="ck-sufi">al-Ṣūfī ${SU.magText(S.mag)} · ${S.where}</span>`;
     return head + name + pos + (S.note ? `<span class="ck-sufi ck-note">${S.note}</span>` : "");
   }
   function tipHtml(o) {
     if (o.type === "region") return o.html;
-    const pos = `${o.alt >= 0 ? Math.round(o.alt) + "° above the horizon" : "below the horizon"} · ${Math.round(o.az)}° ${compass16(o.az)}`;
+    const pos = `${o.alt >= 0 ? t("{a}° above the horizon", { a: Math.round(o.alt) }) : t("below the horizon")} · ${Math.round(o.az)}° ${compass16(o.az)}`;
     if (o.type === "star") {
-      const ph = SpaceshipSky.starPhysics(o.bv), title = o.name || o.desig || `HIP ${o.hip}`;
+      const ph = SpaceshipSky.starPhysics(o.bv), title = t(o.name || "") || o.desig || `HIP ${o.hip}`;
       const sub = [o.name && o.desig ? o.desig : "", o.conName].filter(Boolean).join(" · ");
       return `<b style="color:${SpaceshipSky.bvColor(o.bv)}">★ ${title}</b><i>${sub}</i>
-        <span>Brightness ${o.mag.toFixed(2)} mag – ${magWords(o.mag)}</span>
-        <span>${ph.colour} star · type ${ph.cls} · ~${ph.tempK.toLocaleString()} K</span>
-        <span>Now ${pos}</span>${sufiHtml(o)}<small>HIP ${o.hip} · RA ${(o.ra / 15).toFixed(2)} h · Dec ${o.dec.toFixed(1)}°</small>`;
+        <span>${t("Brightness {m} mag – {w}", { m: N(o.mag, 2), w: magWords(o.mag) })}</span>
+        <span>${t("{c} star · type {t} · ~{k} K", { c: t(ph.colour), t: ph.cls, k: N(ph.tempK, 0) })}</span>
+        <span>${t("Now {pos}", { pos })}</span>${sufiHtml(o)}<small>HIP ${o.hip} · RA ${N(o.ra / 15, 2)} h · Dec ${N(o.dec, 1)}°</small>`;
     }
     if (o.type === "dso") {
-      return `<b style="color:#ffb4b4">◌ ${o.name}${o.alias ? " · " + o.alias : ""}</b><i>${o.kind}${o.desig ? " · " + o.desig : ""}</i>
-        <span>Brightness ${o.mag.toFixed(1)} mag – ${o.mag < 5 ? "visible to the eye in a dark sky" : "binoculars or a telescope"}</span>
-        ${o.dim ? `<span>Size on the sky ~${o.dim}′</span>` : ""}<span>Now ${pos}</span><small>RA ${(o.ra / 15).toFixed(2)} h · Dec ${o.dec.toFixed(1)}°</small>`;
+      return `<b style="color:#ffb4b4">◌ ${o.name}${o.alias ? " · " + t(o.alias) : ""}</b><i>${t(o.kind)}${o.desig ? " · " + o.desig : ""}</i>
+        <span>${t("Brightness {m} mag – {w}", { m: N(o.mag, 1), w: t(o.mag < 5 ? "visible to the eye in a dark sky" : "binoculars or a telescope") })}</span>
+        ${o.dim ? `<span>${t("Size on the sky ~{d}′", { d: o.dim })}</span>` : ""}<span>${t("Now {pos}", { pos })}</span><small>RA ${N(o.ra / 15, 2)} h · Dec ${N(o.dec, 1)}°</small>`;
     }
     const km = o.distAU * 149597870.7, lightMin = (o.distAU * 499.005) / 60;
     let extra = "";
-    if (o.name === "Moon") extra = `<span>${Math.round(((1 - Math.cos(o.phase * Math.PI / 180)) / 2) * 100)}% lit · ${Math.round(km).toLocaleString()} km away</span>`;
-    else if (o.name === "Sun") extra = `<span>Light needs ${lightMin.toFixed(1)} minutes to reach your window</span>`;
-    else extra = `<span>${o.distAU.toFixed(2)} AU away · light travels ${lightMin.toFixed(0)} min</span><span>Brightness ${o.mag.toFixed(1)} mag</span>`;
-    return `<b style="color:#ff9be6">${o.sym} ${o.name}</b>${extra}<span>Now ${pos}</span>`;
+    if (o.name === "Moon") extra = `<span>${t("{p}% lit · {km} km away", { p: Math.round(((1 - Math.cos(o.phase * Math.PI / 180)) / 2) * 100), km: N(Math.round(km), 0) })}</span>`;
+    else if (o.name === "Sun") extra = `<span>${t("Light needs {m} minutes to reach your window", { m: N(lightMin, 1) })}</span>`;
+    else extra = `<span>${t("{au} AU away · light travels {m} min", { au: N(o.distAU, 2), m: N(lightMin, 0) })}</span><span>${t("Brightness {m} mag", { m: N(o.mag, 1) })}</span>`;
+    return `<b style="color:#ff9be6">${o.sym} ${t(o.name)}</b>${extra}<span>${t("Now {pos}", { pos })}</span>`;
   }
   // tap = pin the info box (stays, follows the star while you drag); tap empty sky or × = close
   const keyOf = (o) => o && (o.type === "star" ? "s" + o.hip : o.type === "region" ? "r" + o.id : o.type + o.name);
@@ -936,16 +944,23 @@
   }
   // the page with its writing segmented – wide screens: callouts left/right like the annotated sheet; narrow: numbered list below
   function buildPage(box, f) {
-    const A = f.ann, esc = (t) => String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;");
+    const SU = SpaceshipSufi, LL = SU.L, A = f.ann, esc = (x) => String(x).replace(/&/g, "&amp;").replace(/</g, "&lt;");
     const wide = box.parentElement.getBoundingClientRect().width >= 760;
     const SIDE = wide ? 700 : 0, VW = f.frameW + 2 * SIDE, VH = f.frameH + (wide ? 90 : 10);
-    const R = (r, cls, id) => `<rect class="${cls}" data-id="${id}" x="${r[0] + SIDE}" y="${r[1]}" width="${r[2] - r[0]}" height="${r[3] - r[1]}" rx="8"></rect>`;
-    const rects = A.boxes.map((b, k) => R(b.box, "sg-box" + (b.color === "gold" ? " gold" : ""), b.id) +
+    const cls = (b) => (b.color === "gold" ? " gold" : b.color === "violet" ? " violet" : "");
+    const R = (r, c, id) => `<rect class="${c}" data-id="${id}" x="${r[0] + SIDE}" y="${r[1]}" width="${r[2] - r[0]}" height="${r[3] - r[1]}" rx="8"></rect>`;
+    const P = (pts, c, id) => `<polygon class="${c}" data-id="${id}" points="${pts.map(([x, y]) => `${x + SIDE},${y}`).join(" ")}"></polygon>`;
+    const parts = (b) => { if (!b.parts) return ""; const Q = b.parts;
+      return (Q.rects || []).map((r) => R(r, "sg-box violet", b.id)).join("") + (Q.polys || []).map((q) => P(q, "sg-box violet", b.id)).join("") +
+        `<polyline class="sg-curve" data-id="${b.id}" points="${Q.dots.map(([x, y]) => `${x + SIDE},${y}`).join(" ")}"></polyline>` +
+        Q.dots.map(([x, y, r]) => `<circle class="sg-ring violet" data-id="${b.id}" cx="${x + SIDE}" cy="${y}" r="${r + 7}"></circle>`).join(""); };
+    const rects = A.boxes.map((b, k) => R(b.box, "sg-box" + (b.boxColor === "cyan" ? "" : cls(b)), b.id) + parts(b) +
       (b.alif ? R(b.alif, "sg-alif", b.id) + `<circle class="sg-ring" data-id="${b.id}" cx="${b.ring[0] + SIDE}" cy="${b.ring[1]}" r="${b.ring[2]}"></circle>` : "") +
-      (wide ? "" : `<g class="sg-mark${b.color === "gold" ? " gold" : ""}" data-id="${b.id}"><circle cx="${b.box[0] + SIDE}" cy="${b.box[1]}" r="26"></circle><text x="${b.box[0] + SIDE}" y="${b.box[1] + 1}">${k + 1}</text></g>`)).join("");
+      (wide ? "" : `<g class="sg-mark${cls(b)}" data-id="${b.id}"><circle cx="${b.box[0] + SIDE}" cy="${b.box[1]}" r="26"></circle><text x="${b.box[0] + SIDE}" y="${b.box[1] + 1}">${k + 1}</text></g>`)).join("");
     const tags = A.tags.map(([n, x, y]) => { const w = String(n).length > 1 ? 44 : 30;
-      return `<g class="sg-tag" data-n="${n}"><rect x="${x + SIDE - w / 2}" y="${y - 17}" width="${w}" height="34" rx="7"></rect><text x="${x + SIDE}" y="${y + 1}">${n}</text></g>`; }).join("");
-    const textBlock = (b) => `<button type="button" class="sg-go" data-hip="${b.hip}" title="Show in the sky">↗ sky</button><p class="sg-ar" dir="rtl">${esc(b.ar)}</p><p class="sg-tr">${esc(b.tr)}</p><p class="sg-ph">${esc(b.ph)}</p>`;
+      return `<g class="sg-tag${n >= 17 && n <= 25 ? " violet" : ""}" data-n="${n}"><rect x="${x + SIDE - w / 2}" y="${y - 17}" width="${w}" height="34" rx="7"></rect><text x="${x + SIDE}" y="${y + 1}">${n}</text></g>`; }).join("");
+    const names = (b) => (b.names ? `<div class="sg-names">${b.names.map(([ar, tr, m]) => `<p><b class="sg-ar-i" dir="rtl">${ar}</b> <i>${esc(tr)}</i> – ${esc(LL(m))}</p>`).join("")}</div>` : "");
+    const textBlock = (b) => `<button type="button" class="sg-go" data-hip="${b.hip}" title="Show in the sky">↗ sky</button><p class="sg-ar" dir="rtl">${esc(b.ar)}</p><p class="sg-tr">${esc(LL(b.tr))}</p>${names(b)}<p class="sg-ph">${esc(b.ph)}</p>`;
     // zoom on the head: the same page, cropped by a nested viewBox, with each of the three stars ringed
     const inset = (b, x, y, size) => { const [vx, vy, vw, vh] = b.inset.view, k = vw / size;
       return `<svg class="sg-inset" x="${x}" y="${y}" width="${size}" height="${size}" viewBox="${vx} ${vy} ${vw} ${vh}">
@@ -954,24 +969,26 @@
         ${b.dots.map(([dx, dy]) => `<circle class="sg-ring" cx="${dx}" cy="${dy}" r="${5.5}" style="stroke-width:${3 * k}px"></circle>`).join("")}
         <rect class="sg-box gold" x="${b.box[0]}" y="${b.box[1]}" width="${b.box[2] - b.box[0]}" height="${b.box[3] - b.box[1]}" rx="${4 * k}" style="stroke-width:${3 * k}px"></rect>
         <rect x="${vx}" y="${vy}" width="${vw}" height="${vh}" fill="none" stroke="#f5c542" stroke-width="${3 * k}"></rect></svg>`; };
+    const notes = (b) => b.inset.notes.map(([col, tx, sub]) => `<p class="sg-tr" style="color:${col}">${esc(LL(tx))}</p><p class="sg-ph">${esc(LL(sub))}</p>`).join("");
     let calls = "", extra = "";
     if (wide) calls = A.boxes.map((b) => {
-      const [x0, y0, x1, y1] = b.box, L = b.side === "L", gold = b.color === "gold";
-      const fx = L ? 24 : SIDE + f.frameW + 76, fw = SIDE - 100, ax = L ? SIDE - 64 : SIDE + f.frameW + 64, ay = b.ty + (gold ? 120 : 26);
-      const ex = L ? x0 + SIDE : x1 + SIDE, ey = Math.max(y0, Math.min(y1, ay));
+      const [x0, y0, x1, y1] = b.box, Ls = b.side === "L", hi = !!b.color;
+      const fx = Ls ? 24 : SIDE + f.frameW + 76, fw = SIDE - 100, ax = Ls ? SIDE - 64 : SIDE + f.frameW + 64, ay = b.ty + (hi ? 120 : 26);
+      const ex = Ls ? x0 + SIDE : x1 + SIDE, ey = Math.max(y0, Math.min(y1, ay));
       if (b.inset) {   // the zoom sits under the last callout on the right (placed by relayout)
         const ix = SIDE + f.frameW + 76, iy = 1395, size = 430;
         extra += `<g class="sg-inset-g" data-size="${size}">` + inset(b, ix, iy, size) + `<foreignObject class="sg-notes-fo" x="${ix}" y="${iy + size + 12}" width="${fw}" height="300"><div xmlns="http://www.w3.org/1999/xhtml" class="sg-text sg-notes">
-          <p class="sg-tr">Zoom on the head:</p>${b.inset.notes.map(([col, t, sub]) => `<p class="sg-tr" style="color:${col}">${esc(t)}</p><p class="sg-ph">${esc(sub)}</p>`).join("")}</div></foreignObject></g>`;
+          <p class="sg-tr">${esc(t("Zoom on the head:"))}</p>${notes(b)}</div></foreignObject></g>`;
       }
-      return `<g class="sg-call${gold ? " gold" : ""}" data-id="${b.id}" data-side="${b.side}" data-ty="${b.ty}" data-y0="${y0}" data-y1="${y1}"><line x1="${ex}" y1="${ey}" x2="${ax}" y2="${ay}"></line><circle cx="${ax}" cy="${ay}" r="7"></circle>
-        <foreignObject x="${fx}" y="${b.ty}" width="${fw}" height="${gold ? 640 : 520}"><div xmlns="http://www.w3.org/1999/xhtml" class="sg-text${gold ? " gold" : ""}">${textBlock(b)}</div></foreignObject></g>`; }).join("");
-    const legend = wide ? `<text class="sg-legend" x="${SIDE}" y="${f.frameH + 62}">${A.legend.map(([col, t], k) => `<tspan ${k ? 'dx="36"' : ""} style="fill:${col}">${esc(t)}</tspan>`).join("")}</text>` : "";
+      return `<g class="sg-call${cls(b)}" data-id="${b.id}" data-side="${b.side}" data-ty="${b.ty}" data-y0="${y0}" data-y1="${y1}"><line x1="${ex}" y1="${ey}" x2="${ax}" y2="${ay}"></line><circle cx="${ax}" cy="${ay}" r="7"></circle>
+        <foreignObject x="${fx}" y="${b.ty}" width="${fw}" height="${hi ? 640 : 520}"><div xmlns="http://www.w3.org/1999/xhtml" class="sg-text${cls(b)}">${textBlock(b)}</div></foreignObject></g>`; }).join("");
+    const legLine = (items, dy) => `<text class="sg-legend" x="${SIDE}" y="${f.frameH + 62}" data-dy="${dy}">${items.map(([col, tx], k) => `<tspan ${k ? 'dx="30"' : ""} style="fill:${col}">${esc(LL(tx))}</tspan>`).join("")}</text>`;
+    const legend = wide ? legLine(A.legend.slice(0, 3), 0) + legLine(A.legend.slice(3), 44) : "";
     box.innerHTML = `<div class="sg-wrap${wide ? " wide" : ""}"><svg class="sg-svg" viewBox="0 0 ${VW} ${VH}" preserveAspectRatio="xMidYMin meet">
         <image href="${f.page}" x="${SIDE}" y="0" width="${f.frameW}" height="${f.frameH}"></image>${rects}${tags}${calls}${extra}${legend}</svg>
-      ${wide ? "" : `<ol class="sg-list">${A.boxes.map((b) => `<li data-id="${b.id}" class="${b.color === "gold" ? "gold" : ""}">${textBlock(b)}${b.inset
-          ? `<div class="sg-list-inset"><svg viewBox="0 0 300 300" width="150" height="150">${inset(b, 0, 0, 300)}</svg><div>${b.inset.notes.map(([col, t, sub]) => `<p style="color:${col}">${esc(t)}</p><p class="sg-ph">${esc(sub)}</p>`).join("")}</div></div>` : ""}</li>`).join("")}</ol>
-        <p class="sg-legend-h">${A.legend.map(([col, t]) => `<span style="color:${col}">${esc(t)}</span>`).join(" · ")}</p>`}
+      ${wide ? "" : `<ol class="sg-list">${A.boxes.map((b) => `<li data-id="${b.id}" class="${cls(b).trim()}">${textBlock(b)}${b.inset
+          ? `<div class="sg-list-inset"><svg viewBox="0 0 300 300" width="150" height="150">${inset(b, 0, 0, 300)}</svg><div>${b.inset.notes.map(([col, tx, sub]) => `<p style="color:${col}">${esc(LL(tx))}</p><p class="sg-ph">${esc(LL(sub))}</p>`).join("")}</div></div>` : ""}</li>`).join("")}</ol>
+        <p class="sg-legend-h">${A.legend.map(([col, tx]) => `<span style="color:${col}">${esc(LL(tx))}</span>`).join(" · ")}</p>`}
       <p class="stb-src">The drawing is “as seen on the globe”, the mirror image of the sky – in the cockpit it is flipped onto the real stars. Segmentation and readings from the project chat “صورة محادثة مترجمة”.</p></div>`;
     // highlight a segment everywhere when one of its parts is touched
     const all = (id) => box.querySelectorAll(`[data-id="${id}"]`);
@@ -992,7 +1009,7 @@
           const fo = gEl.querySelector("foreignObject"), h = fo.firstElementChild.getBoundingClientRect().height * k;
           const y = Math.max(Number(gEl.dataset.ty), bottom + 28);
           fo.setAttribute("y", y); fo.setAttribute("height", h + 24);
-          const ay = y + Math.min(gEl.classList.contains("gold") ? 120 : 26, h / 2), line = gEl.querySelector("line");
+          const ay = y + Math.min(gEl.classList.contains("gold") || gEl.classList.contains("violet") ? 120 : 26, h / 2), line = gEl.querySelector("line");
           line.setAttribute("y2", ay); gEl.querySelector("circle").setAttribute("cy", ay);
           line.setAttribute("y1", Math.max(Number(gEl.dataset.y0), Math.min(Number(gEl.dataset.y1), ay)));
           bottom = y + h;
@@ -1003,17 +1020,18 @@
           bottom = iy + size + 14 + nf.firstElementChild.getBoundingClientRect().height * k; }
         maxBottom = Math.max(maxBottom, bottom);
       });
-      const lg = svg.querySelector(".sg-legend"), ly = Math.max(f.frameH + 62, maxBottom + 56);
-      if (lg) lg.setAttribute("y", ly);
-      svg.setAttribute("viewBox", `0 0 ${VW} ${Math.max(VH, ly + 30)}`);
+      const ly = Math.max(f.frameH + 62, maxBottom + 56);
+      svg.querySelectorAll(".sg-legend").forEach((lg) => lg.setAttribute("y", ly + Number(lg.dataset.dy || 0)));
+      svg.setAttribute("viewBox", `0 0 ${VW} ${Math.max(VH, ly + 74)}`);
     });
-    box.querySelectorAll(".sg-tag").forEach((t) => t.addEventListener("click", () => {
-      const r = SpaceshipSufi.table.rows.find((x) => x.n === Number(t.dataset.n)); if (r) showInSky(r.hip); }));
+    box.querySelectorAll(".sg-tag").forEach((tg) => tg.addEventListener("click", () => {
+      const r = SpaceshipSufi.table.rows.find((x) => x.n === Number(tg.dataset.n)); if (r) showInSky(r.hip); }));
   }
   function buildTable(el, T) {
     const SU = SpaceshipSufi, esc = (t) => String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;");
-    const nameCell = (r) => { const nm = SU.nameOf(r); return nm ? `${nm.ar ? `<span class="ar">${nm.ar}</span>` : ""}${nm.tr ? `<i>${esc(nm.tr)}</i>` : ""}` : ""; };
-    const row = (r) => `<tr data-hip="${r.hip}" title="${esc(r.fix || r.note || "Show this star in the sky")}">
+    const nameCell = (r) => { const nm = SU.nameOf(r); if (!nm) return ""; const st = nm.color ? ` style="color:${SU.COLORS[nm.color]}"` : "";
+      return `${nm.ar ? `<span class="ar"${st}>${nm.ar}</span>` : ""}${nm.tr ? `<i>${esc(nm.tr)}</i>` : ""}`; };
+    const row = (r) => `<tr data-hip="${r.hip}" class="${r.n >= 17 && r.n <= 25 ? "violet" : r.n === 1 ? "gold" : ""}" title="${esc(r.fix || r.note || "Show this star in the sky")}">
       <td class="n"><span class="ar">${r.ab}</span><b>${r.n}</b></td><td>${esc(r.where)}${r.fix ? ' <span class="fix">*</span>' : ""}</td>
       <td class="mono">${r.lon || "—"}</td><td class="mono">${r.lat || "—"}</td>
       <td class="mono">${esc(r.mag === "neb" ? "nebula" : r.mag)}</td><td class="mono">${esc(r.ptol ? (r.ptol === "neb" ? "nebula" : r.ptol) : "—")}</td>
@@ -1025,7 +1043,7 @@
         <thead><tr><th>№</th><th>Place on the figure</th><th>Longitude</th><th>Latitude</th><th>al-Ṣūfī</th><th>Ptolemy</th><th>Today</th><th>Arabic name</th></tr></thead>
         <tbody>${T.rows.map(row).join("")}<tr class="sep"><td colspan="8">Added by al-Ṣūfī in his comments</td></tr>${T.added.map(row).join("")}</tbody>
       </table></div>
-      <div class="stb-foot"><p>${esc(T.note)}</p><ul>${fixes}</ul><p class="stb-src">${esc(T.source)} Tap a row to find the star.</p></div>`;
+      <div class="stb-foot"><p>${esc(T.note)}</p><ul>${fixes}</ul><p class="stb-src">${esc(T.source)} ${esc(t("Tap a row to find the star."))}</p></div>`;
     el.querySelector(".st-pos964").addEventListener("change", (e) => { ui.layers.pos964 = e.target.checked; renderSky(); });
     el.querySelectorAll("tbody tr[data-hip]").forEach((tr) => tr.addEventListener("click", () => {
       el.querySelectorAll("tr.sel").forEach((x) => x.classList.remove("sel")); tr.classList.add("sel");
@@ -1112,7 +1130,7 @@
         <button class="st-skip" type="button" hidden>Skip scan ›</button>
 
         <div class="ly ly-tl">
-          <div class="ly-head"><span>${(st.address.label || "").replace(/</g, "&lt;")}</span><small>deck ${floor}</small></div>
+          <div class="ly-head"><span>${(st.address.label || "").replace(/</g, "&lt;")}</span><small>${t("deck {n}", { n: floor })}</small></div>
           <div class="ck-wins"><button class="ck-mode" type="button" title="Real stars / original photo">★ Space</button></div>
           <div class="ck-layers">
             <button data-l="mw" class="on" title="Milky Way">Milky Way</button><button data-l="cons" class="on" title="Constellation lines">Lines</button>
@@ -1138,7 +1156,7 @@
           </div>
         </div>
         <div class="ly ly-bl">
-          <div class="ly-head"><span>Ship</span><small>${st.windows.length} ports</small></div>
+          <div class="ly-head"><span>Ship</span><small>${t("{n} ports", { n: st.windows.length })}</small></div>
           <div class="lv-pixel">
             <canvas class="lv-main" width="${W}" height="${H}"></canvas>
             <canvas class="lv-intro" width="${W * K}" height="${H * K}" hidden></canvas>
@@ -1233,5 +1251,15 @@
 
   // point the dome at a direction (also used by tests)
   function look(az, alt, fov) { if (!ui || !ui.cam) return; Object.assign(ui.cam, { az, alt }, fov ? { fov } : {}); renderSky(); }
+  if (window.I18N) I18N.on(() => {
+    if (!ui) return;
+    if (ui.spec) renderSpec(ui.spec);
+    const el = ui.q(".sufi-table");
+    if (el && el.dataset.built) { const open = !el.hidden, tab = el.dataset.tab; delete el.dataset.built; el.innerHTML = "";
+      if (open) { buildPanel(el, SpaceshipSufi.table); if (tab === "table") el.querySelector('.stb-tabs button[data-tab="table"]').click(); } }
+    ui.q(".ly-tl .ly-head small").textContent = t("deck {n}", { n: cur.floor || 0 });
+    ui.q(".ly-bl .ly-head small").textContent = t("{n} ports", { n: cur.windows.length });
+    selectWindowReadouts(); ui.pinned = null; renderSky();
+  });
   window.SpaceshipLaunch = { mount, unmount, look };
 })();

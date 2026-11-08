@@ -12,6 +12,9 @@
   const altOf = (v) => Math.asin(Math.max(-1, Math.min(1, v[2]))) * R2D;
   const azOf = (v) => (Math.atan2(v[0], v[1]) * R2D + 360) % 360;
 
+  const T = (s, v) => (window.I18N ? I18N.t(s, v) : s);
+  const DIR = (s) => (window.I18N ? I18N.dir(s) : s);
+
   // ---------- stereographic camera ----------
   function makeCam(az, alt, hfov, W, H) {
     const S = SpaceshipSky.vecAzAlt;
@@ -135,11 +138,16 @@
     const P = [];
     for (let j = 0; j <= NY; j++) { const row = []; for (let i = 0; i <= NX; i++) {
       const X = (i / NX * 2 - 1) * tx, Y = (1 - j / NY * 2) * ty;
-      row.push(cam.project(norm([f[0] + r[0] * X + u[0] * Y, f[1] + r[1] * X + u[1] * Y, f[2] + r[2] * X + u[2] * Y])));
+      // directions more than ~105° from the view centre blow up in the stereographic projection: leave them out
+      const v = norm([f[0] + r[0] * X + u[0] * Y, f[1] + r[1] * X + u[1] * Y, f[2] + r[2] * X + u[2] * Y]);
+      row.push(dot(v, cam.c) < -0.26 ? null : cam.project(v));
     } P.push(row); }
     g.save(); g.setTransform(1, 0, 0, 1, 0, 0);
     for (let j = 0; j < NY; j++) for (let i = 0; i < NX; i++) {
       const a = P[j][i], b = P[j][i + 1], c = P[j + 1][i], d = P[j + 1][i + 1]; if (!a || !b || !c || !d) continue;
+      const xs = [a[0], b[0], c[0], d[0]], ys = [a[1], b[1], c[1], d[1]];
+      if (Math.max(...xs) - Math.min(...xs) > cam.W * 0.8 || Math.max(...ys) - Math.min(...ys) > cam.H * 0.8) continue;   // degenerate, far outside
+      if (Math.max(...xs) < -50 || Math.min(...xs) > cam.W + 50 || Math.max(...ys) < -50 || Math.min(...ys) > cam.H + 50) continue;
       const sa = [i / NX * w, j / NY * h], sb = [(i + 1) / NX * w, j / NY * h], sc = [i / NX * w, (j + 1) / NY * h], sd = [(i + 1) / NX * w, (j + 1) / NY * h];
       tri(g, src, sa, sb, sc, a, b, c); tri(g, src, sb, sd, sc, b, d, c);
     }
@@ -239,11 +247,11 @@
           g.save(); g.beginPath(); poly.forEach((p, i) => (i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1]))); g.closePath();
           g.fillStyle = "rgba(255,200,90,.10)"; g.fill();
           g.shadowColor = "#ffcf6b"; g.shadowBlur = 14 * dpr; g.strokeStyle = "rgba(255,207,107,.85)"; g.lineWidth = 2 * dpr; g.stroke(); g.restore();
-          info.regions.push({ poly, o: { type: "region", id: h.id, name: h.name, html: h.html, x: poly.reduce((a, p) => a + p[0], 0) / poly.length, y: poly.reduce((a, p) => a + p[1], 0) / poly.length } });
+          info.regions.push({ poly, o: { type: "region", id: h.id, name: SpaceshipSufi.L(h.name), html: SpaceshipSufi.L(h.html), x: poly.reduce((a, p) => a + p[0], 0) / poly.length, y: poly.reduce((a, p) => a + p[1], 0) / poly.length } });
         });
         // segmentation of the page: boxes around the Arabic writing, number tags, callouts (translation + phonetics)
         if (f.ann && L.sufiSeg !== false) drawSegments(f, toScr);
-        info.figure = { title: f.title, caption: f.caption };
+        info.figure = { title: f.title, caption: SpaceshipSufi.L(f.caption) };
       });
     }
     // al-Ṣūfī's positions for 964, carried to J2000 by precession – shows how far each catalogued place is from the real star
@@ -270,85 +278,72 @@
     function wrapLines(text, maxW) { const words = text.split(/\s+/), out = []; let line = "";
       words.forEach((w) => { const t = line ? line + " " + w : w; if (g.measureText(t).width > maxW && line) { out.push(line); line = w; } else line = t; }); if (line) out.push(line); return out; }
     function drawSegments(f, toScr) {
-      const A = f.ann, CY = "#18b4d8", WH = "#ffffff", OR = "#ffb547", GO = "#f5c542", PK = "#ff6fb5";
-      const AR = (px) => `${Math.round(px * dpr)}px "Noto Naskh Arabic","Geeza Pro","Amiri","Times New Roman",serif`;
+      const SU = window.SpaceshipSufi, LL = SU.L, A = f.ann, CY = "#18b4d8", GO = SU.COLORS.gold, PK = SU.COLORS.pink, VI = SU.COLORS.violet;
+      const tt = (s, v) => (window.I18N ? I18N.t(s, v) : s);
       const SANS = (w, px) => `${w} ${Math.round(px * dpr)}px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif`;
-      // figure bounding box on screen
-      const corners = [[0, 0], [f.frameW, 0], [f.frameW, f.frameH], [0, f.frameH]].map(toScr);
-      const fb = { x0: Math.min(...corners.map((c) => c[0])), x1: Math.max(...corners.map((c) => c[0])), y0: Math.min(...corners.map((c) => c[1])), y1: Math.max(...corners.map((c) => c[1])) };
+      const COL = (b) => (b.color === "gold" ? GO : b.color === "violet" ? VI : CY);
       const boxes = A.boxes.map((b) => { const [x0, y0, x1, y1] = b.box; const poly = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]].map(toScr);
-        return { b, poly, c: [poly.reduce((a, p) => a + p[0], 0) / 4, poly.reduce((a, p) => a + p[1], 0) / 4],
-          bb: { x0: Math.min(...poly.map((p) => p[0])), x1: Math.max(...poly.map((p) => p[0])), y0: Math.min(...poly.map((p) => p[1])), y1: Math.max(...poly.map((p) => p[1])) } }; });
+        return { b, poly, c: [poly.reduce((a, p) => a + p[0], 0) / 4, poly.reduce((a, p) => a + p[1], 0) / 4] }; });
       const polyPath = (poly) => { g.beginPath(); poly.forEach((p, i) => (i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1]))); g.closePath(); };
       const rectPoly = (r) => [[r[0], r[1]], [r[2], r[1]], [r[2], r[3]], [r[0], r[3]]].map(toScr);
-      // 1) boxes around the writing (gold = al-Haqʿa)
+      const circlePoly = (c, rad) => Array.from({ length: 16 }, (_, k) => [c[0] + rad * Math.cos((k / 16) * 2 * Math.PI), c[1] + rad * Math.sin((k / 16) * 2 * Math.PI)]);
+      const idx = cat && (cat.hipIndex || (cat.hipIndex = Object.fromEntries(cat.stars.map((st) => [st[7], st]))));
+      const realPts = (hips) => (hips || []).map((h) => idx && idx[h] && proj(HV(idx[h][0], idx[h][1]))).filter(Boolean);
+      const glow = (col, blur) => { g.shadowColor = col; g.shadowBlur = blur * dpr; };
+      const label = (txt, x, y, col) => { g.shadowBlur = 0; g.fillStyle = col; g.font = SANS(600, 11); g.textAlign = "left"; g.fillText(txt, x, y); };
+      // 1) boxes around the writing (gold = al-Haqʿa, violet = the Tresses)
       g.save();
-      boxes.forEach(({ b, poly }) => { const gold = b.color === "gold"; g.lineWidth = (gold ? 2.4 : 1.6) * dpr; g.strokeStyle = gold ? GO : CY;
-        g.fillStyle = gold ? "rgba(245,197,66,.12)" : "rgba(24,180,216,.08)"; if (gold) { g.shadowColor = GO; g.shadowBlur = 10 * dpr; } else g.shadowBlur = 0;
-        polyPath(poly); g.fill(); g.stroke(); });
+      boxes.forEach(({ b, poly }) => { const bc = b.boxColor === "cyan" ? null : b.color, col = bc === "gold" ? GO : bc === "violet" ? VI : CY, hi = col !== CY;
+        g.lineWidth = (hi ? 2.4 : 1.6) * dpr; g.strokeStyle = col;
+        g.fillStyle = bc === "gold" ? "rgba(245,197,66,.12)" : bc === "violet" ? "rgba(185,140,255,.12)" : "rgba(24,180,216,.08)";
+        if (hi) glow(col, 10); else g.shadowBlur = 0; polyPath(poly); g.fill(); g.stroke(); });
       g.restore();
       // 1b) al-Haqʿa in detail: pink = the numeral alif (1), gold ring = its three stars on the drawing; and the three real stars
       boxes.filter((x) => x.b.alif).forEach((x) => {
         const b = x.b, ap = rectPoly(b.alif), c = toScr([b.ring[0], b.ring[1]]), e = toScr([b.ring[0] + b.ring[2], b.ring[1]]), rad = Math.hypot(e[0] - c[0], e[1] - c[1]);
         g.save(); g.lineWidth = 2.2 * dpr; g.strokeStyle = PK; g.fillStyle = "rgba(255,111,181,.12)"; polyPath(ap); g.fill(); g.stroke();
-        g.strokeStyle = GO; g.shadowColor = GO; g.shadowBlur = 12 * dpr; g.beginPath(); g.arc(c[0], c[1], rad, 0, 2 * Math.PI); g.stroke(); g.restore();
-        const ring = Array.from({ length: 16 }, (_, k) => [c[0] + rad * Math.cos((k / 16) * 2 * Math.PI), c[1] + rad * Math.sin((k / 16) * 2 * Math.PI)]);
-        x.extra = [ap, ring];
-        const idx = cat && (cat.hipIndex || (cat.hipIndex = Object.fromEntries(cat.stars.map((st) => [st[7], st]))));
-        const pts = (b.real || []).map((h) => idx && idx[h] && proj(HV(idx[h][0], idx[h][1]))).filter(Boolean);
+        g.strokeStyle = GO; glow(GO, 12); g.beginPath(); g.arc(c[0], c[1], rad, 0, 2 * Math.PI); g.stroke(); g.restore();
+        x.extra = [ap, circlePoly(c, rad)];
+        const pts = realPts(b.real);
         if (pts.length) {
-          g.save(); g.strokeStyle = GO; g.lineWidth = 1.6 * dpr; g.shadowColor = GO; g.shadowBlur = 8 * dpr;
+          g.save(); g.strokeStyle = GO; g.lineWidth = 1.6 * dpr; glow(GO, 8);
           pts.forEach((p) => { g.beginPath(); g.arc(p[0], p[1], 7 * dpr, 0, 2 * Math.PI); g.stroke(); });
-          const mx = Math.max(...pts.map((p) => p[0])), my = Math.min(...pts.map((p) => p[1]));
-          g.shadowBlur = 0; g.fillStyle = GO; g.font = `600 ${Math.round(11 * dpr)}px -apple-system,BlinkMacSystemFont,sans-serif`; g.textAlign = "left";
-          g.fillText("al-Haqʿa · الهقعة", mx + 12 * dpr, my - 6 * dpr); g.restore();
+          label("al-Haqʿa · الهقعة", Math.max(...pts.map((p) => p[0])) + 12 * dpr, Math.min(...pts.map((p) => p[1])) - 6 * dpr, GO); g.restore();
         }
       });
-      // 2) number tags (abjad → digits), screen-aligned so they stay readable on the mirrored page
+      // 1c) the Tresses (violet): the words on the page, the nine stars of the drawing joined by their curve, and the nine real stars
+      boxes.filter((x) => x.b.parts).forEach((x) => {
+        const P = x.b.parts; x.extra = x.extra || [];
+        g.save(); g.strokeStyle = VI; g.fillStyle = "rgba(185,140,255,.14)"; g.lineWidth = 2.2 * dpr; glow(VI, 10);
+        (P.rects || []).forEach((r) => { const pl = rectPoly(r); polyPath(pl); g.fill(); g.stroke(); x.extra.push(pl); });
+        (P.polys || []).forEach((q) => { const pl = q.map(toScr); polyPath(pl); g.fill(); g.stroke(); x.extra.push(pl); });
+        const dots = (P.dots || []).map(([dx, dy, r]) => { const c = toScr([dx, dy]), e = toScr([dx + r + 5, dy]); return [c, Math.hypot(e[0] - c[0], e[1] - c[1])]; });
+        g.setLineDash([5 * dpr, 4 * dpr]); g.lineWidth = 1.4 * dpr; g.beginPath(); dots.forEach(([c], k) => (k ? g.lineTo(c[0], c[1]) : g.moveTo(c[0], c[1]))); g.stroke(); g.setLineDash([]);
+        g.lineWidth = 2 * dpr; dots.forEach(([c, rad]) => { g.beginPath(); g.arc(c[0], c[1], rad, 0, 2 * Math.PI); g.stroke(); x.extra.push(circlePoly(c, rad)); });
+        g.restore();
+        const pts = realPts(x.b.real);
+        if (pts.length > 1) {
+          g.save(); g.strokeStyle = VI; glow(VI, 8); g.lineWidth = 1.6 * dpr; g.globalAlpha = 0.9;
+          g.beginPath(); pts.forEach((p, k) => (k ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1]))); g.stroke();
+          pts.forEach((p) => { g.beginPath(); g.arc(p[0], p[1], 6.5 * dpr, 0, 2 * Math.PI); g.stroke(); });
+          const top = pts.reduce((a, p) => (p[1] < a[1] ? p : a), pts[0]);
+          label(`${tt("Tresses of al-Jawzāʾ")} · ذوائب الجوزاء`, top[0] + 12 * dpr, top[1] - 8 * dpr, VI); g.restore();
+        }
+      });
+      // 2) number tags (abjad → digits), screen-aligned so they stay readable on the mirrored page; 17–25 in violet
       g.save(); g.font = SANS(700, 10.5); g.textAlign = "center"; g.textBaseline = "middle";
       A.tags.forEach(([n, x, y]) => { const p = toScr([x, y]); if (!onScreen(p)) return; const t = String(n), w = g.measureText(t).width + 8 * dpr, h = 15 * dpr;
-        g.fillStyle = CY; rrect(p[0] - w / 2, p[1] - h / 2, w, h, 4 * dpr); g.fill(); g.fillStyle = "#fff"; g.fillText(t, p[0], p[1] + 0.5 * dpr); });
+        g.fillStyle = n >= 17 && n <= 25 ? VI : CY; rrect(p[0] - w / 2, p[1] - h / 2, w, h, 4 * dpr); g.fill(); g.fillStyle = "#fff"; g.fillText(t, p[0], p[1] + 0.5 * dpr); });
       g.restore();
-      // tap a box → its Arabic, translation and phonetics
+      // tap a box → its Arabic, translation and phonetics (and for al-Haqʿa: its names with their meanings)
       boxes.forEach(({ b, poly, c, extra }) => {
-        const gold = b.color === "gold", st = gold ? ' style="color:#f5c542"' : "";
-        const o = { type: "region", id: "seg-" + b.id, name: b.tr, x: c[0], y: c[1],
-          html: `<span class="seg-ar ar"${st}>${b.ar}</span><span class="seg-tr"${st}>${b.tr}</span><span class="seg-ph">${b.ph}</span>` +
-            (b.inset ? b.inset.notes.map(([col, t, sub]) => `<span style="color:${col}">${t}</span>`).join("") : "") + `<small>al-Ṣūfī · Orion page as seen on the globe</small>` };
+        const col = COL(b), st = col !== CY ? ` style="color:${col}"` : "";
+        const names = b.names ? `<span class="seg-names">${b.names.map(([ar, tr, m]) => `<span><b class="ar"${st}>${ar}</b> <i class="seg-ph">${tr}</i> – ${LL(m)}</span>`).join("")}</span>` : "";
+        const o = { type: "region", id: "seg-" + b.id, name: LL(b.tr), x: c[0], y: c[1],
+          html: `<span class="seg-ar ar"${st}>${b.ar}</span><span class="seg-tr"${st}>${LL(b.tr)}</span>${names}<span class="seg-ph">${b.ph}</span>` +
+            (b.inset ? b.inset.notes.map(([nc, t]) => `<span style="color:${nc}">${LL(t)}</span>`).join("") : "") + `<small>${tt("al-Ṣūfī · Orion page as seen on the globe")}</small>` };
         [poly].concat(extra || []).forEach((pl) => info.regions.push({ poly: pl, o }));
       });
-      // 3) callouts beside the figure – only when it is large enough on screen to read them
-      if (!view.segCallouts || L.labels === false || fb.y1 - fb.y0 < H * 0.55) return;   // full callouts live in the page view
-      const colW = Math.min(250 * dpr, W * 0.26), gap = 8 * dpr, pad = 7 * dpr, midX = (fb.x0 + fb.x1) / 2;
-      const sides = { L: [], R: [] }; boxes.forEach((bx) => sides[bx.c[0] < midX ? "L" : "R"].push(bx));
-      ["L", "R"].forEach((side) => {
-        const list = sides[side].sort((a, b) => a.c[1] - b.c[1]);
-        const x = side === "L" ? Math.max(gap, fb.x0 - colW - 28 * dpr) : Math.min(W - colW - gap, fb.x1 + 28 * dpr);
-        let cursor = gap;
-        list.forEach((bx) => {
-          // lay out: Arabic (as written), translation, phonetics
-          g.font = AR(15); const la = wrapLines(bx.b.ar, colW); g.font = SANS(600, 12); const lt = wrapLines(bx.b.tr, colW); g.font = SANS("italic 400", 11); const lp = wrapLines(bx.b.ph, colW);
-          const lhA = 20 * dpr, lhT = 16 * dpr, lhP = 14.5 * dpr, h = la.length * lhA + lt.length * lhT + lp.length * lhP + 6 * dpr;
-          let y = Math.max(cursor, bx.c[1] - h / 2); y = Math.min(y, H - h - gap);
-          // leader line from the box edge to the text block
-          const ax = side === "L" ? x + colW + pad : x - pad, ay = y + h / 2;
-          const ex = side === "L" ? bx.bb.x0 : bx.bb.x1, ey = Math.max(bx.bb.y0, Math.min(bx.bb.y1, ay));
-          g.save(); g.fillStyle = "rgba(4,8,22,.74)"; rrect(x - pad, y - pad, colW + 2 * pad, h + 2 * pad, 8 * dpr); g.fill();
-          g.strokeStyle = CY; g.lineWidth = 1.3 * dpr; g.beginPath(); g.moveTo(ex, ey); g.lineTo(ax, ay); g.stroke();
-          g.fillStyle = CY; g.beginPath(); g.arc(ax, ay, 3 * dpr, 0, 2 * Math.PI); g.fill();
-          let yy = y; g.textBaseline = "top";
-          g.font = AR(15); g.fillStyle = CY; g.direction = "rtl"; g.textAlign = "right"; la.forEach((l) => { g.fillText(l, x + colW, yy); yy += lhA; });
-          g.direction = "ltr"; g.textAlign = "left";
-          g.font = SANS(600, 12); g.fillStyle = WH; lt.forEach((l) => { g.fillText(l, x, yy); yy += lhT; }); yy += 3 * dpr;
-          g.font = SANS("italic 400", 11); g.fillStyle = OR; lp.forEach((l) => { g.fillText(l, x, yy); yy += lhP; });
-          g.restore();
-          cursor = y + h + 2 * pad + gap;
-        });
-      });
-      // legend under the figure
-      g.save(); g.font = SANS(600, 11); g.textBaseline = "top"; let lx = Math.max(gap, midX - 210 * dpr); const ly = Math.min(H - 20 * dpr, fb.y1 + 8 * dpr);
-      A.legend.forEach(([col, t]) => { g.fillStyle = col; g.fillText(t, lx, ly); lx += g.measureText(t).width + 16 * dpr; });
-      g.restore();
     }
     info.regionAt = (x, y) => { const r = info.regions.find((rg) => pip([x, y], rg.poly)); return r ? r.o : null; };
     // helper: polyline through sky directions
@@ -390,7 +385,7 @@
       else { g.strokeRect(p[0] - r, p[1] - r, 2 * r, 2 * r); }
       if (L.labels !== false && (mag < 7 || view.fov < 70)) {
         g.globalAlpha = 0.8; g.fillStyle = col; g.font = `${Math.round(10 * scale * dpr)}px -apple-system,BlinkMacSystemFont,sans-serif`; g.textAlign = "left";
-        g.fillText(alt ? `${mname} ${alt}` : mname, p[0] + r + 3 * dpr, p[1] + 3 * dpr);
+        g.fillText(alt ? `${mname} ${T(alt)}` : mname, p[0] + r + 3 * dpr, p[1] + 3 * dpr);
       }
       g.restore();
       objects.push({ type: "dso", x: p[0], y: p[1], r: r + 4, mag, name: mname, alias: alt, desig, kind, dim, alt: altOf(v), az: azOf(v), ra, dec });
@@ -412,7 +407,7 @@
       if (mag < 2.5) { g.fillStyle = "#fff"; g.beginPath(); g.arc(p[0], p[1], r * 0.45, 0, 2 * Math.PI); g.fill(); }
       if (L.labels !== false && name && (mag < 2.2 || (view.fov < 70 && mag < 3.5))) {
         g.fillStyle = "rgba(235,240,255,.85)"; g.font = `${Math.round(11 * scale * dpr)}px -apple-system,BlinkMacSystemFont,sans-serif`; g.textAlign = "left";
-        g.fillText(name, p[0] + r + 4 * dpr, p[1] + 4 * dpr); info.inView.push({ type: "star", name, mag });
+        g.fillText(T(name), p[0] + r + 4 * dpr, p[1] + 4 * dpr); info.inView.push({ type: "star", name: T(name), mag });
       }
       objects.push({ type: "star", x: p[0], y: p[1], r, mag, bv, name, desig, con, conName: (cat.conName || {})[con] || con, hip, alt: altOf(v), az: azOf(v), ra, dec });
     });
@@ -429,20 +424,30 @@
       if (isMoon) { const lit = (1 - Math.cos(b.phase * D2R)) / 2; g.save(); g.globalAlpha = 0.85; g.fillStyle = "#050a1f";
         g.beginPath(); g.ellipse(p[0] + (b.phase < 180 ? -1 : 1) * r * lit * 2, p[1], r, r, 0, 0, 2 * Math.PI); g.fill(); g.restore(); }
       if (L.labels !== false) { g.fillStyle = "#ffc4ec"; g.font = `600 ${Math.round(12 * scale * dpr)}px -apple-system,BlinkMacSystemFont,sans-serif`; g.textAlign = "left";
-        g.fillText(b.name, p[0] + r + 6 * dpr, p[1] + 4 * dpr); }
+        g.fillText(T(b.name), p[0] + r + 6 * dpr, p[1] + 4 * dpr); }
       const ill = window.Astronomy && !isSun ? Astronomy.Illumination(b.name, view.time) : null;
       objects.push({ type: "body", x: p[0], y: p[1], r: r * 1.5, name: b.name, sym: b.sym, alt: b.alt, az: b.az, phase: b.phase, mag: ill ? ill.mag : -26.7, distAU: ill ? ill.geo_dist : 1 });
-      info.inView.push({ type: "body", name: b.name });
+      info.inView.push({ type: "body", name: T(b.name) });
     });
-    // 8) ground below the horizon
+    // 8) ground below the horizon. The horizon is a great circle, and stereographic projection maps it to a circle
+    //    (exactly) – fill inside or outside that circle, whichever side the nadir is on. (A polygon of sampled points
+    //    breaks when the view looks up with a narrow field.)
     const fgC = document.createElement("canvas"); fgC.width = W; fgC.height = H; const fg = fgC.getContext("2d");
+    const raw = (v) => { const ct = dot(v, cam.c), f = 2 / Math.max(1e-6, 1 + ct); return [W / 2 + f * dot(v, cam.r) * cam.k, H / 2 - f * dot(v, cam.u) * cam.k]; };
+    const hz3 = [raw(S(view.az, 0)), raw(S(view.az + 90, 0)), raw(S(view.az - 90, 0))];
+    const circ = (() => { const [[ax, ay], [bx, by], [cx, cy]] = hz3, d = 2 * (ax * (by - cy) + bx * (cy - ay) + cx * (ay - by));
+      if (Math.abs(d) < 1e-6) return null;
+      const ux = ((ax * ax + ay * ay) * (by - cy) + (bx * bx + by * by) * (cy - ay) + (cx * cx + cy * cy) * (ay - by)) / d;
+      const uy = ((ax * ax + ay * ay) * (cx - bx) + (bx * bx + by * by) * (ax - cx) + (cx * cx + cy * cy) * (bx - ax)) / d;
+      return { x: ux, y: uy, r: Math.hypot(ax - ux, ay - uy) }; })();
     const hzPts = []; for (let a = -180; a <= 180; a += 3) { const p = proj(S(view.az + a, 0)); if (p) hzPts.push(p); }
-    if (hzPts.length > 2) {
-      fg.beginPath(); fg.moveTo(hzPts[0][0], hzPts[0][1]); hzPts.forEach((p) => fg.lineTo(p[0], p[1]));
-      const nadir = proj(S(view.az, -89.9)) || [W / 2, H * 3];
-      fg.lineTo(hzPts[hzPts.length - 1][0], Math.max(H, nadir[1])); fg.lineTo(hzPts[0][0], Math.max(H, nadir[1])); fg.closePath();
-      const gy = Math.min(...hzPts.map((p) => p[1])), gg = fg.createLinearGradient(0, Math.max(0, gy), 0, H);
-      gg.addColorStop(0, "#0c1226"); gg.addColorStop(0.15, "#070b18"); gg.addColorStop(1, "#020308"); fg.fillStyle = gg; fg.fill();
+    if (circ && circ.r < W * 400) {
+      const nd = S(view.az, -89.99), nadirInside = dot(nd, cam.c) > -0.999 && Math.hypot(raw(nd)[0] - circ.x, raw(nd)[1] - circ.y) < circ.r;
+      fg.beginPath();
+      if (!nadirInside) fg.rect(0, 0, W, H);
+      fg.moveTo(circ.x + circ.r, circ.y); fg.arc(circ.x, circ.y, circ.r, 0, 2 * Math.PI);
+      const top = nadirInside ? circ.y - circ.r : 0, gg = fg.createLinearGradient(0, Math.max(0, Math.min(H, top)), 0, H);
+      gg.addColorStop(0, "#0c1226"); gg.addColorStop(0.15, "#070b18"); gg.addColorStop(1, "#020308"); fg.fillStyle = gg; fg.fill("evenodd");
     }
     // 9) window anchor: stylized lower part of the photo (or the whole photo in photo mode)
     if (view.photo && view.photo.img && view.photo.img.naturalWidth) {
@@ -454,10 +459,12 @@
     g.drawImage(fgC, 0, 0);
     // horizon line + cardinal points
     if (hzPts.length > 2) {
-      g.save(); g.strokeStyle = "rgba(143,211,255,.35)"; g.lineWidth = 1 * dpr; g.beginPath(); hzPts.forEach((p, i) => (i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1]))); g.stroke(); g.restore();
+      g.save(); g.strokeStyle = "rgba(143,211,255,.35)"; g.lineWidth = 1 * dpr; g.beginPath();
+      if (circ && circ.r < W * 400) g.arc(circ.x, circ.y, circ.r, 0, 2 * Math.PI); else hzPts.forEach((p, i) => (i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])));
+      g.stroke(); g.restore();
       ["N", "NE", "E", "SE", "S", "SW", "W", "NW"].forEach((n, i) => { const p = proj(S(i * 45, 0)); if (!onScreen(p, -10)) return;
         g.fillStyle = n.length === 1 ? "rgba(255,120,110,.9)" : "rgba(255,160,150,.6)"; g.font = `600 ${Math.round((n.length === 1 ? 15 : 11) * dpr)}px -apple-system,BlinkMacSystemFont,sans-serif`;
-        g.textAlign = "center"; g.fillText(n, p[0], p[1] + 20 * dpr); });
+        g.textAlign = "center"; g.fillText(DIR(n), p[0], p[1] + 20 * dpr); });
     }
     // occlusion test for hover: hidden behind ground/foreground?
     let fgData = null;

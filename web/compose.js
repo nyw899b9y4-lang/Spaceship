@@ -186,18 +186,29 @@
       sensor_range: Math.round(200 + st.sensors * 25),                      // matches the real 200 m scan at minimum
     };
     const caps = [];
-    const add = (id, name, desc, cond) => cond && caps.push({ id, name, desc });
-    add("bio_dome", "Bio-dome regeneration", `Hull repairs itself – ${Math.round(s.veg * 100)} % greenery around the house`, s.veg >= 0.22 || o.parks + o.green >= 3);
-    add("hydro", "Hydro-cooling", "Water nearby cools the engines – longer boost", o.water || s.water >= 0.02);
-    add("maglev", "Maglev boost", `${o.tram ? "Tram" : "Rail"} line within 200 m – short burst of extra speed`, o.tram || o.rail);
-    add("solar", "Solar sails", `${geo.southWindows} south-facing window${geo.southWindows === 1 ? "" : "s"} – recharge from starlight`, geo.southWindows >= 1 || s.roof >= 0.4);
-    add("cloak", "Urban cloaking", `${o.buildings} buildings around – hide in the crowd`, o.buildings >= 60 || s.roof >= 0.38);
-    add("panorama", "Panorama sensors", `Windows cover ${Math.round(geo.spreadDeg)}° of the horizon`, geo.windows >= 3 || geo.spreadDeg >= 120);
-    add("high_orbit", "High orbit", `Deck ${geo.floor} – starts above the rooftops`, geo.floor >= 4);
-    add("trade_port", "Trade port", `${o.shops + o.food} shops & cafés nearby`, o.shops + o.food >= 8);
-    add("academy", "Academy link", "School nearby – faster skill upgrades", o.schools >= 1);
-    add("sanctuary", "Sanctuary", "Place of worship nearby – calm shield", o.worship >= 1);
-    add("arterial", "Arterial jump", `${o.majorRoads} main road${o.majorRoads === 1 ? "" : "s"} – quick jump to the next sector`, o.majorRoads >= 2);
+    const add = (id, name, desc, cond, de) => cond && caps.push({ id, name, desc, de });
+    add("bio_dome", "Bio-dome regeneration", `Hull repairs itself – ${Math.round(s.veg * 100)} % greenery around the house`, s.veg >= 0.22 || o.parks + o.green >= 3,
+      ["Biokuppel-Regeneration", `Rumpf repariert sich selbst – ${Math.round(s.veg * 100)} % Grün rund ums Haus`]);
+    add("hydro", "Hydro-cooling", "Water nearby cools the engines – longer boost", o.water || s.water >= 0.02,
+      ["Wasserkühlung", "Wasser in der Nähe kühlt die Triebwerke – längerer Boost"]);
+    add("maglev", "Maglev boost", `${o.tram ? "Tram" : "Rail"} line within 200 m – short burst of extra speed`, o.tram || o.rail,
+      ["Magnetschwebe-Boost", `${o.tram ? "Tram" : "Bahn"}linie im Umkreis von 200 m – kurzer Extraschub`]);
+    add("solar", "Solar sails", `${geo.southWindows} south-facing window${geo.southWindows === 1 ? "" : "s"} – recharge from starlight`, geo.southWindows >= 1 || s.roof >= 0.4,
+      ["Sonnensegel", `${geo.southWindows} Fenster nach Süden – Aufladen mit Sternenlicht`]);
+    add("cloak", "Urban cloaking", `${o.buildings} buildings around – hide in the crowd`, o.buildings >= 60 || s.roof >= 0.38,
+      ["Stadttarnung", `${o.buildings} Gebäude ringsum – in der Menge verschwinden`]);
+    add("panorama", "Panorama sensors", `Windows cover ${Math.round(geo.spreadDeg)}° of the horizon`, geo.windows >= 3 || geo.spreadDeg >= 120,
+      ["Panorama-Sensoren", `Die Fenster überblicken ${Math.round(geo.spreadDeg)}° des Horizonts`]);
+    add("high_orbit", "High orbit", `Deck ${geo.floor} – starts above the rooftops`, geo.floor >= 4,
+      ["Hoher Orbit", `Deck ${geo.floor} – startet über den Dächern`]);
+    add("trade_port", "Trade port", `${o.shops + o.food} shops & cafés nearby`, o.shops + o.food >= 8,
+      ["Handelshafen", `${o.shops + o.food} Läden & Cafés in der Nähe`]);
+    add("academy", "Academy link", "School nearby – faster skill upgrades", o.schools >= 1,
+      ["Akademie-Anschluss", "Schule in der Nähe – schnellere Upgrades"]);
+    add("sanctuary", "Sanctuary", "Place of worship nearby – calm shield", o.worship >= 1,
+      ["Refugium", "Gotteshaus in der Nähe – ruhiger Schild"]);
+    add("arterial", "Arterial jump", `${o.majorRoads} main road${o.majorRoads === 1 ? "" : "s"} – quick jump to the next sector`, o.majorRoads >= 2,
+      ["Hauptstraßen-Sprung", `${o.majorRoads} Hauptstraße${o.majorRoads === 1 ? "" : "n"} – schneller Sprung in den nächsten Sektor`]);
     return { stats: st, physics, capabilities: caps };
   }
 
@@ -223,7 +234,7 @@
   function specJSON(r, st) {
     const out = { spec: r.spec, version: r.version, created: new Date().toISOString(), address: st.address.label, radius_m: r.radius_m,
       center: r.center, geometry: r.geometry, surroundings: { satellite: r.satellite, osm: r.osm, status: r.status },
-      stats: r.stats, physics: r.physics, capabilities: r.capabilities };
+      stats: r.stats, physics: r.physics, capabilities: r.capabilities.map(({ id, name, desc }) => ({ id, name, desc })) };
     return JSON.stringify(out, (k, v) => (typeof v === "number" ? Math.round(v * 1000) / 1000 : v), 2);
   }
 
