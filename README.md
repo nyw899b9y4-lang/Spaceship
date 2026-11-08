@@ -1,16 +1,19 @@
 # Spaceship
 
-Share data from any device – phone, tablet or computer – through the browser. No app install.
+Turn an apartment into a spaceship: its real outline, its windows, and the view from each window into the sky.
 
 ## Open
 
 **[🚀 nyw899b9y4-lang.github.io/Spaceship](https://nyw899b9y4-lang.github.io/Spaceship/)**
 
-Visitors can send their **location**, **motion sensor readings** and a **photo** (its GPS position is read from the photo metadata when present). Each is optional, asked for with the device's own permission prompt, and sent only after they agree.
+1. **Address** – search (swisstopo for Switzerland, OpenStreetMap elsewhere)
+2. **Building & windows** – satellite image with the building outline; tap each window on the outline → its outward view direction (azimuth) comes from the wall
+3. **Views** – one photo per window (frame + sky) taken in the page, with the phone's compass heading and tilt at the moment of the shot
+4. **Plan & send** – outline, windows and view rays; stored in Supabase
 
 ## Environment
 
-- `web/` – the homepage (plain HTML/JS), published to GitHub Pages on every push
-- `web/config.js` – backend connection (Supabase URL + publishable key)
-- `backend/supabase-setup.sql` – creates the `submissions` table and private `photos` bucket; visitors can only add data, never read it
-- Submissions are viewed in the Supabase dashboard (Table Editor → `submissions`, Storage → `photos`)
+- `web/` – the homepage (plain HTML/JS, Leaflet), published to GitHub Pages on every push
+- `web/config.js` – Supabase URL + publishable key (insert-only)
+- `backend/supabase-apartments.sql` – `apartments` table; photos in the private `photos` bucket under `<apartment id>/window-<n>.jpg`
+- Imagery © swisstopo (CH) / © Esri (elsewhere, non-commercial) · Buildings & search © OpenStreetMap contributors

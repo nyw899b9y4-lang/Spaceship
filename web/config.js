@@ -6,5 +6,6 @@ window.SPACESHIP_CONFIG = {
   SUPABASE_URL: "https://yzrgdobxilmrxruzwwvi.supabase.co",
   SUPABASE_KEY: "sb_publishable_EJrjYgyAjcDz683W6v3SwQ_mRve5pL5",
   TABLE: "submissions",
+  APARTMENTS_TABLE: "apartments",
   PHOTO_BUCKET: "photos",
 };

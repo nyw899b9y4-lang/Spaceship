@@ -5,278 +5,607 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0b1020">
 <title>Spaceship</title>
+<link rel="stylesheet" href="vendor/leaflet/leaflet.css">
 <style>
   :root {
     --bg: #0b1020; --card: #141a2e; --line: #252d48; --text: #e8ecf8; --muted: #8e98b8;
-    --accent: #7aa2ff; --ok: #4ade80; --warn: #fbbf24; --err: #f87171;
+    --accent: #7aa2ff; --ok: #4ade80; --warn: #fbbf24; --err: #f87171; --win: #ff6bd6;
   }
   * { box-sizing: border-box; }
-  body {
-    margin: 0; background: var(--bg); color: var(--text);
+  body { margin: 0; background: var(--bg); color: var(--text);
     font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
-  }
-  main { max-width: 560px; margin: 0 auto; padding: 24px 16px 48px; }
-  h1 { font-size: 28px; margin: 8px 0 4px; letter-spacing: -0.02em; }
-  .lead { color: var(--muted); margin: 0 0 20px; }
+    padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom); }
+  main { max-width: 640px; margin: 0 auto; padding: 20px 16px 48px; }
+  h1 { font-size: 26px; margin: 4px 0 2px; letter-spacing: -0.02em; }
+  h2 { font-size: 20px; margin: 0 0 4px; }
+  p { margin: 6px 0; }
+  .muted { color: var(--muted); font-size: 14px; }
+  .steps { display: flex; gap: 6px; margin: 14px 0 18px; }
+  .steps span { flex: 1; height: 4px; border-radius: 2px; background: var(--line); }
+  .steps span.on { background: var(--accent); }
   .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 16px; margin: 12px 0; }
-  .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-  .card h2 { font-size: 17px; margin: 0; }
-  .card p { margin: 4px 0 0; color: var(--muted); font-size: 14px; }
-  .status { font-size: 13px; color: var(--muted); white-space: nowrap; }
-  .status.ok { color: var(--ok); } .status.err { color: var(--err); }
-  button, .btn {
-    appearance: none; border: 0; border-radius: 12px; padding: 10px 16px; font: inherit; font-weight: 600;
-    background: var(--accent); color: #0b1020; cursor: pointer; white-space: nowrap;
-  }
-  button.secondary, .btn.secondary { background: transparent; color: var(--accent); border: 1px solid var(--line); }
+  .row { display: flex; align-items: center; gap: 10px; }
+  .row.between { justify-content: space-between; }
+  input[type=text], input[type=number], textarea {
+    width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--line);
+    border-radius: 10px; padding: 11px 12px; font: inherit; }
+  input[type=number] { width: 90px; }
+  button, .btn { appearance: none; border: 0; border-radius: 12px; padding: 11px 16px; font: inherit; font-weight: 600;
+    background: var(--accent); color: #0b1020; cursor: pointer; white-space: nowrap; }
+  button.secondary { background: transparent; color: var(--accent); border: 1px solid var(--line); }
+  button.small { padding: 6px 10px; font-size: 14px; border-radius: 9px; }
   button:disabled { opacity: .45; cursor: default; }
-  .data { margin-top: 12px; font: 13px/1.6 ui-monospace, Menlo, monospace; color: var(--text); word-break: break-word; }
-  .data:empty { display: none; }
-  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; text-align: center; }
-  .grid div { background: var(--bg); border-radius: 10px; padding: 8px 4px; }
-  .grid b { display: block; font-size: 18px; }
-  .grid span { font-size: 11px; color: var(--muted); }
-  img.preview { width: 100%; border-radius: 12px; margin-top: 12px; display: block; }
-  textarea { width: 100%; margin-top: 10px; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 10px; padding: 10px; font: inherit; resize: vertical; }
-  label.consent { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; color: var(--muted); margin: 16px 0; }
-  label.consent input { margin-top: 3px; width: 18px; height: 18px; accent-color: var(--accent); }
-  #send { width: 100%; padding: 14px; font-size: 17px; }
-  .notice { overflow-wrap: anywhere; font-size: 13px; padding: 10px 12px; border-radius: 10px; margin-top: 12px; }
+  .wide { width: 100%; padding: 14px; font-size: 17px; margin-top: 8px; }
+  .results button { display: block; width: 100%; text-align: left; margin-top: 8px; background: var(--bg);
+    color: var(--text); border: 1px solid var(--line); font-weight: 500; white-space: normal; }
+  #map, #map2 { height: 58vh; min-height: 340px; border-radius: 14px; overflow: hidden; border: 1px solid var(--line); }
+  #map2 { height: 46vh; min-height: 300px; }
+  .hint { font-size: 14px; color: var(--muted); margin: 10px 0; }
+  .hint b { color: var(--text); }
+  .winlist { list-style: none; padding: 0; margin: 10px 0 0; }
+  .winlist li { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); }
+  .winlist li:first-child { border-top: 0; }
+  .badge { display: inline-flex; align-items: center; justify-content: center; min-width: 30px; height: 30px; border-radius: 15px;
+    background: var(--win); color: #0b1020; font-weight: 700; font-size: 14px; }
+  .winlist input[type=text] { padding: 6px 8px; }
+  .grow { flex: 1; min-width: 0; }
+  .camwrap { position: relative; border-radius: 14px; overflow: hidden; background: #000; aspect-ratio: 3 / 4; }
+  .camwrap video, .camwrap img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .hud { position: absolute; left: 8px; right: 8px; top: 8px; display: flex; justify-content: space-between;
+    font: 13px/1.3 ui-monospace, Menlo, monospace; }
+  .hud div { background: rgba(0,0,0,.55); padding: 6px 8px; border-radius: 8px; }
+  .hud .good { color: var(--ok); } .hud .bad { color: var(--warn); }
+  .crosshair { position: absolute; left: 50%; top: 50%; width: 36px; height: 36px; margin: -18px 0 0 -18px;
+    border: 2px solid rgba(255,255,255,.8); border-radius: 50%; pointer-events: none; }
+  .thumbs { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+  .thumbs img { width: 72px; height: 96px; object-fit: cover; border-radius: 8px; border: 2px solid var(--line); }
+  .notice { overflow-wrap: anywhere; font-size: 14px; padding: 10px 12px; border-radius: 10px; margin-top: 12px; }
   .notice.info { background: #1d2540; color: var(--muted); }
   .notice.ok { background: #12301f; color: var(--ok); }
   .notice.err { background: #3a1717; color: var(--err); }
-  input[type=file] { display: none; }
+  .notice.warn { background: #3a3017; color: var(--warn); }
+  label.consent { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; color: var(--muted); margin: 14px 0; }
+  label.consent input { margin-top: 3px; width: 18px; height: 18px; accent-color: var(--accent); }
+  table.sum { width: 100%; border-collapse: collapse; font-size: 14px; }
+  table.sum td { padding: 6px 4px; border-top: 1px solid var(--line); }
+  [hidden] { display: none !important; }
+  .leaflet-container { background: #111; font: 12px/1.4 sans-serif; }
+  .winlabel { background: var(--win); color: #0b1020; border: 0; font-weight: 700; border-radius: 10px; padding: 1px 6px; box-shadow: none; }
+  .winlabel::before { display: none; }
 </style>
 </head>
 <body>
 <main>
   <h1>🚀 Spaceship</h1>
-  <p class="lead">Share data from your device – on any phone, tablet or computer. Each item is optional and only collected when you tap it.</p>
+  <p class="muted">Turn your apartment into a spaceship: its real shape, its windows, and the view from each window into the sky.</p>
+  <div class="steps" id="steps"><span></span><span></span><span></span><span></span></div>
 
-  <section class="card" id="loc-card">
-    <div class="row">
-      <div><h2>📍 Location</h2><p>Your position from GPS / network.</p></div>
-      <button id="loc-btn">Get location</button>
+  <!-- STEP 1: address -->
+  <section data-step="1">
+    <div class="card">
+      <h2>1 · Your address</h2>
+      <p class="muted">Street, number and town.</p>
+      <form id="addr-form" class="row" style="margin-top:10px">
+        <input type="text" id="addr" autocomplete="street-address" placeholder="e.g. Bahnhofstrasse 1, Zürich" required>
+        <button type="submit">Search</button>
+      </form>
+      <div class="results" id="addr-results"></div>
+      <div id="addr-msg"></div>
     </div>
-    <div class="data" id="loc-data"></div>
   </section>
 
-  <section class="card" id="motion-card">
-    <div class="row">
-      <div><h2>🧭 Motion sensors</h2><p>Tilt, compass and acceleration – recorded for 3 seconds.</p></div>
-      <button id="motion-btn">Record</button>
+  <!-- STEP 2: map + windows -->
+  <section data-step="2" hidden>
+    <div class="card">
+      <h2>2 · Your building and windows</h2>
+      <p class="muted" id="addr-chosen"></p>
+      <p class="hint" id="map-hint">Loading the building outline…</p>
+      <div id="map"></div>
+      <div class="row between" style="margin-top:12px">
+        <label class="row" for="floor" style="gap:8px">Your floor <input type="number" id="floor" min="-2" max="200" value="0"></label>
+        <span class="muted" style="font-size:13px">0 = ground floor</span>
+      </div>
+      <ul class="winlist" id="winlist"></ul>
+      <button class="wide" id="to-step3" disabled>Next: photograph the views</button>
+      <button class="secondary small" style="margin-top:10px" data-back="1">← Change address</button>
     </div>
-    <div class="data" id="motion-data"></div>
   </section>
 
-  <section class="card" id="photo-card">
-    <div class="row">
-      <div><h2>📷 Photo or file</h2><p>Take a photo or choose an image. Its GPS position is read if the photo contains one.</p></div>
-      <label class="btn" for="photo-input">Choose</label>
-      <input id="photo-input" type="file" accept="image/*">
+  <!-- STEP 3: photo per window -->
+  <section data-step="3" hidden>
+    <div class="card">
+      <h2 id="cam-title">3 · View from window</h2>
+      <p class="hint">Stand back from the window so the <b>whole window frame</b> and the <b>sky</b> are in the picture. Hold the phone upright and point it straight out of the window.</p>
+      <div class="camwrap" id="camwrap">
+        <video id="video" playsinline muted autoplay></video>
+        <img id="shot" alt="" hidden>
+        <div class="crosshair" id="crosshair"></div>
+        <div class="hud" id="hud" hidden><div id="hud-dir">–</div><div id="hud-tilt">–</div></div>
+      </div>
+      <div id="cam-msg"></div>
+      <div class="row" style="margin-top:12px">
+        <button class="grow" id="cam-start">Start camera</button>
+        <button class="grow" id="cam-shoot" hidden>📸 Take photo</button>
+        <button class="grow secondary" id="cam-retake" hidden>Retake</button>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <label class="btn secondary grow" for="cam-file" style="text-align:center;background:transparent;color:var(--accent);border:1px solid var(--line)">Upload a photo instead</label>
+        <input id="cam-file" type="file" accept="image/*" hidden>
+      </div>
+      <div class="thumbs" id="thumbs"></div>
+      <button class="wide" id="cam-next" disabled>Next window</button>
+      <button class="secondary small" style="margin-top:10px" data-back="2">← Back to map</button>
     </div>
-    <div class="data" id="photo-data"></div>
-    <img class="preview" id="photo-preview" alt="" hidden>
   </section>
 
-  <section class="card">
-    <h2>✏️ Note <span class="status">(optional)</span></h2>
-    <textarea id="note" rows="2" maxlength="500" placeholder="Anything to add?"></textarea>
+  <!-- STEP 4: review + send -->
+  <section data-step="4" hidden>
+    <div class="card">
+      <h2>4 · Your spaceship plan</h2>
+      <p class="muted">The building outline, your windows and the direction each one looks out.</p>
+      <div id="map2"></div>
+      <table class="sum" id="sum" style="margin-top:10px"></table>
+      <label class="consent">
+        <input type="checkbox" id="consent">
+        <span>I agree that my address, the window positions, the photos and the sensor readings are sent to and stored by the Spaceship project.</span>
+      </label>
+      <button class="wide" id="send" disabled>Send</button>
+      <div id="send-msg"></div>
+      <button class="secondary small" style="margin-top:10px" data-back="3">← Back to photos</button>
+    </div>
   </section>
 
-  <label class="consent">
-    <input type="checkbox" id="consent">
-    <span>I agree that the data collected above is sent to and stored by the Spaceship project.</span>
-  </label>
-  <button id="send" disabled>Send</button>
-  <div id="send-msg"></div>
+  <p class="muted" style="font-size:12px;margin-top:24px">Imagery: © swisstopo (Switzerland), © Esri and its data providers (elsewhere). Buildings & search: © OpenStreetMap contributors.</p>
 </main>
 
 <script src="config.js"></script>
+<script src="vendor/leaflet/leaflet.js"></script>
 <script src="vendor/exifr-7.1.3.full.umd.js"></script>
 <script>
+"use strict";
 const cfg = window.SPACESHIP_CONFIG || {};
 const backendReady = Boolean(cfg.SUPABASE_URL && cfg.SUPABASE_KEY);
 const $ = (id) => document.getElementById(id);
-const state = { location: null, motion: null, photo: null, photoMeta: null };
-const r = (v, d = 2) => (v == null || isNaN(v) ? null : Number(v.toFixed(d)));
+const r = (v, d = 1) => (v == null || !Number.isFinite(v) ? null : Number(v.toFixed(d)));
+const D2R = Math.PI / 180, R2D = 180 / Math.PI;
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const notice = (el, type, html) => { el.className = "notice " + type; el.innerHTML = html; };
 
-function setNotice(el, type, text) { el.className = "notice " + type; el.textContent = text; }
-function refreshSend() {
-  const hasData = state.location || state.motion || state.photo || $("note").value.trim();
-  $("send").disabled = !($("consent").checked && hasData);
+const state = {
+  address: null,          // { label, lat, lon, source }
+  building: null,         // { osm_id, ring: [[lat,lon],...], levels, height }
+  windows: [],            // { id, label, lat, lon, wall_azimuth_deg, photo:{blob,...}, capture:{...} }
+  camIndex: 0,
+};
+
+// ---------------- navigation ----------------
+function show(step) {
+  document.querySelectorAll("section[data-step]").forEach((s) => (s.hidden = s.dataset.step !== String(step)));
+  document.querySelectorAll("#steps span").forEach((s, i) => s.classList.toggle("on", i < step));
+  if (step !== 3) stopCamera();
+  if (step === 2) setTimeout(() => map && map.invalidateSize(), 50);
+  if (step === 3) openWindow(state.camIndex);
+  if (step === 4) buildSummary();
+  window.scrollTo({ top: 0, behavior: "smooth" });
 }
-$("consent").addEventListener("change", refreshSend);
-$("note").addEventListener("input", refreshSend);
+document.querySelectorAll("[data-back]").forEach((b) => b.addEventListener("click", () => show(Number(b.dataset.back))));
 
-if (!backendReady) setNotice($("send-msg"), "info", "Preview mode: the page works, but sending is not connected yet.");
+// ---------------- geometry helpers (local metres around a reference point) ----------------
+function toXY(lat, lon, ref) {
+  return [(lon - ref[1]) * D2R * 6371008.8 * Math.cos(ref[0] * D2R), (lat - ref[0]) * D2R * 6371008.8];
+}
+function toLL(x, y, ref) {
+  return [ref[0] + (y / 6371008.8) * R2D, ref[1] + (x / (6371008.8 * Math.cos(ref[0] * D2R))) * R2D];
+}
+function pointInRing(pt, ring) { // pt [x,y], ring [[x,y]...]
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i], [xj, yj] = ring[j];
+    if ((yi > pt[1]) !== (yj > pt[1]) && pt[0] < ((xj - xi) * (pt[1] - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+// nearest wall of the building to a tapped point → foot point on the wall and its outward compass direction
+function nearestWall(lat, lon) {
+  const ref = state.building.ring[0];
+  const ring = state.building.ring.map(([a, b]) => toXY(a, b, ref));
+  const p = toXY(lat, lon, ref);
+  let best = null;
+  for (let i = 0; i < ring.length - 1; i++) {
+    const [ax, ay] = ring[i], [bx, by] = ring[i + 1];
+    const dx = bx - ax, dy = by - ay, len2 = dx * dx + dy * dy;
+    if (len2 < 0.01) continue;
+    const t = Math.max(0, Math.min(1, ((p[0] - ax) * dx + (p[1] - ay) * dy) / len2));
+    const qx = ax + t * dx, qy = ay + t * dy, dist = Math.hypot(p[0] - qx, p[1] - qy);
+    if (!best || dist < best.dist) best = { dist, qx, qy, dx, dy, len: Math.sqrt(len2) };
+  }
+  if (!best) return null;
+  let nx = best.dy / best.len, ny = -best.dx / best.len;                 // one of the two normals
+  if (pointInRing([best.qx + nx * 0.5, best.qy + ny * 0.5], ring)) { nx = -nx; ny = -ny; } // make it point outward
+  const az = (Math.atan2(nx, ny) * R2D + 360) % 360;                     // 0 = north, 90 = east
+  const [qlat, qlon] = toLL(best.qx, best.qy, ref);
+  return { dist: best.dist, lat: qlat, lon: qlon, azimuth: az, wall_length_m: best.len };
+}
+const compass = (az) => ["N", "NE", "E", "SE", "S", "SW", "W", "NW"][Math.round(az / 45) % 8];
 
-// ---------- Location ----------
-$("loc-btn").addEventListener("click", () => {
-  if (!("geolocation" in navigator)) { $("loc-data").textContent = "Location is not available on this device."; return; }
-  $("loc-btn").disabled = true; $("loc-data").textContent = "Waiting for permission and a position fix…";
-  navigator.geolocation.getCurrentPosition((pos) => {
-    const c = pos.coords;
-    state.location = {
-      lat: c.latitude, lon: c.longitude, accuracy_m: r(c.accuracy, 1),
-      altitude_m: r(c.altitude, 1), heading_deg: r(c.heading, 1), speed_mps: r(c.speed, 2),
-      time: new Date(pos.timestamp).toISOString(),
-    };
-    $("loc-data").innerHTML = `${c.latitude.toFixed(5)}, ${c.longitude.toFixed(5)}<br>± ${Math.round(c.accuracy)} m` +
-      (c.altitude != null ? ` · altitude ${Math.round(c.altitude)} m` : "");
-    $("loc-btn").textContent = "Update"; $("loc-btn").disabled = false; refreshSend();
-  }, (err) => {
-    $("loc-data").textContent = err.code === 1 ? "Permission denied. You can allow location in your browser settings." : "Could not get a position: " + err.message;
-    $("loc-btn").disabled = false;
-  }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 });
+// ---------------- STEP 1: address search ----------------
+const inSwitzerland = (lat, lon) => lat > 45.8 && lat < 47.9 && lon > 5.9 && lon < 10.6;
+$("addr-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const q = $("addr").value.trim(); if (!q) return;
+  $("addr-results").innerHTML = ""; notice($("addr-msg"), "info", "Searching…");
+  let results = [];
+  try {   // Swiss federal address search (precise building addresses)
+    const u = "https://api3.geo.admin.ch/rest/services/api/SearchServer?type=locations&origins=address&limit=6&sr=4326&searchText=" + encodeURIComponent(q);
+    const j = await (await fetch(u)).json();
+    results = (j.results || []).map((x) => ({ label: x.attrs.label.replace(/<[^>]+>/g, ""), lat: x.attrs.lat, lon: x.attrs.lon, source: "swisstopo" }));
+  } catch (_) {}
+  if (!results.length) {
+    try {   // worldwide fallback: OpenStreetMap Nominatim
+      const u = "https://nominatim.openstreetmap.org/search?format=jsonv2&limit=6&addressdetails=0&q=" + encodeURIComponent(q);
+      const j = await (await fetch(u, { headers: { "Accept-Language": navigator.language || "en" } })).json();
+      results = j.map((x) => ({ label: x.display_name, lat: Number(x.lat), lon: Number(x.lon), source: "osm" }));
+    } catch (_) {}
+  }
+  $("addr-msg").className = ""; $("addr-msg").innerHTML = "";
+  if (!results.length) { notice($("addr-msg"), "warn", "No address found. Check the spelling and add the town."); return; }
+  results.forEach((res) => {
+    const b = document.createElement("button");
+    b.textContent = "📍 " + res.label;
+    b.addEventListener("click", () => chooseAddress(res));
+    $("addr-results").appendChild(b);
+  });
 });
 
-// ---------- Motion sensors ----------
-async function askMotionPermission() {
-  // iPhone/iPad Safari require an explicit permission request from a tap
-  const needs = (C) => C && typeof C.requestPermission === "function";
-  if (needs(window.DeviceMotionEvent) && (await DeviceMotionEvent.requestPermission()) !== "granted") return false;
-  if (needs(window.DeviceOrientationEvent) && (await DeviceOrientationEvent.requestPermission()) !== "granted") return false;
+function chooseAddress(res) {
+  state.address = res; state.building = null; state.windows = []; state.camIndex = 0;
+  $("addr-chosen").textContent = res.label;
+  show(2); initMap(res.lat, res.lon); loadBuildings(res.lat, res.lon);
+}
+
+// ---------------- STEP 2: satellite map, building outline, windows ----------------
+let map, layers = {};
+function imageryLayer(lat, lon) {
+  return inSwitzerland(lat, lon)
+    ? L.tileLayer("https://wmts.geo.admin.ch/1.0.0/ch.swisstopo.swissimage/default/current/3857/{z}/{x}/{y}.jpeg",
+        { maxNativeZoom: 20, maxZoom: 21, attribution: "© swisstopo" })
+    : L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+        { maxNativeZoom: 19, maxZoom: 21, attribution: "© Esri, Maxar, Earthstar Geographics" });
+}
+function initMap(lat, lon) {
+  if (!map) {
+    map = L.map("map", { zoomControl: true, attributionControl: true });
+    map.on("click", onMapClick);
+  }
+  Object.values(layers).forEach((l) => l && map.removeLayer(l)); layers = {};
+  layers.img = imageryLayer(lat, lon).addTo(map);
+  layers.addr = L.circleMarker([lat, lon], { radius: 6, color: "#fff", weight: 2, fillColor: "#7aa2ff", fillOpacity: 1 }).addTo(map);
+  layers.others = L.layerGroup().addTo(map);
+  layers.wins = L.layerGroup().addTo(map);
+  map.setView([lat, lon], 19);
+  renderWindows();
+}
+let buildingsNearby = [];
+async function loadBuildings(lat, lon) {
+  $("map-hint").textContent = "Loading the building outline…";
+  const q = `[out:json][timeout:20];way["building"](around:60,${lat},${lon});out geom tags;`;
+  try {
+    const res = await fetch("https://overpass-api.de/api/interpreter", { method: "POST", body: "data=" + encodeURIComponent(q),
+      headers: { "Content-Type": "application/x-www-form-urlencoded" } });
+    const j = await res.json();
+    buildingsNearby = (j.elements || []).filter((e) => e.geometry && e.geometry.length > 3).map((e) => ({
+      osm_id: e.id, ring: e.geometry.map((g) => [g.lat, g.lon]),
+      levels: Number(e.tags && e.tags["building:levels"]) || null, height: parseFloat(e.tags && e.tags.height) || null,
+    }));
+  } catch (_) { buildingsNearby = []; }
+  // pick the building that contains the address point (or the closest one)
+  let pick = null, bestD = Infinity;
+  for (const b of buildingsNearby) {
+    const ref = b.ring[0], ring = b.ring.map(([a, c]) => toXY(a, c, ref)), p = toXY(lat, lon, ref);
+    if (pointInRing(p, ring)) { pick = b; break; }
+    const cx = ring.reduce((s, q) => s + q[0], 0) / ring.length, cy = ring.reduce((s, q) => s + q[1], 0) / ring.length;
+    const d = Math.hypot(p[0] - cx, p[1] - cy); if (d < bestD) { bestD = d; pick = b; }
+  }
+  drawBuildings(); if (pick) selectBuilding(pick);
+  else $("map-hint").innerHTML = "No building outline found here. Zoom in and <b>tap your windows</b> where they are on the image – you'll set the direction with the phone's compass in the next step.";
+}
+function drawBuildings() {
+  layers.others.clearLayers();
+  for (const b of buildingsNearby) {
+    const selected = state.building && state.building.osm_id === b.osm_id;
+    const poly = L.polygon(b.ring, selected
+      ? { color: "#7aa2ff", weight: 3, fillOpacity: 0.12 }
+      : { color: "#ffffff", weight: 1, opacity: 0.5, fillOpacity: 0.02, dashArray: "4 4" });
+    poly.on("click", (ev) => {
+      if (!state.building || state.building.osm_id !== b.osm_id) { L.DomEvent.stop(ev); selectBuilding(b); }
+    });
+    layers.others.addLayer(poly);
+  }
+}
+function selectBuilding(b) {
+  if (state.building && state.building.osm_id !== b.osm_id) state.windows = [];
+  state.building = b; drawBuildings(); renderWindows();
+  map.fitBounds(L.polygon(b.ring).getBounds(), { padding: [30, 30], maxZoom: 20 });
+  $("map-hint").innerHTML = "Blue = your building (tap another outline if it's wrong).<br><b>Tap on the outline where each of your windows is.</b> The arrow shows the direction it looks out.";
+}
+function onMapClick(e) {
+  const { lat, lng } = e.latlng;
+  let w;
+  if (state.building) {
+    const wall = nearestWall(lat, lng);
+    if (!wall || wall.dist > 12) { flashHint("Tap closer to the blue outline to place a window."); return; }
+    w = { lat: wall.lat, lon: wall.lon, wall_azimuth_deg: r(wall.azimuth, 1), source: "map" };
+  } else {
+    w = { lat, lon: lng, wall_azimuth_deg: null, source: "tap" };
+  }
+  w.id = "w" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+  w.label = "";
+  state.windows.push(w); renderWindows();
+}
+function flashHint(t) { const h = $("map-hint"), old = h.innerHTML; h.innerHTML = "<span style='color:var(--warn)'>" + esc(t) + "</span>"; setTimeout(() => (h.innerHTML = old), 2200); }
+function rayEnd(w, metres) {
+  const ref = [w.lat, w.lon], a = w.wall_azimuth_deg * D2R;
+  return toLL(Math.sin(a) * metres, Math.cos(a) * metres, ref);
+}
+function drawWindowsOn(group, metres) {
+  group.clearLayers();
+  state.windows.forEach((w, i) => {
+    if (w.wall_azimuth_deg != null) group.addLayer(L.polyline([[w.lat, w.lon], rayEnd(w, metres)], { color: "#ff6bd6", weight: 3, dashArray: "2 6" }));
+    const m = L.circleMarker([w.lat, w.lon], { radius: 7, color: "#fff", weight: 2, fillColor: "#ff6bd6", fillOpacity: 1 });
+    m.bindTooltip(String(i + 1), { permanent: true, direction: "top", className: "winlabel", offset: [0, -8] });
+    group.addLayer(m);
+  });
+}
+function renderWindows() {
+  if (layers.wins) drawWindowsOn(layers.wins, 14);
+  const ul = $("winlist"); ul.innerHTML = "";
+  state.windows.forEach((w, i) => {
+    const li = document.createElement("li");
+    const dir = w.wall_azimuth_deg != null ? `${Math.round(w.wall_azimuth_deg)}° ${compass(w.wall_azimuth_deg)}` : "direction from phone";
+    li.innerHTML = `<span class="badge">${i + 1}</span>
+      <div class="grow"><input type="text" maxlength="40" placeholder="Room (e.g. Living room)" value="${esc(w.label)}">
+      <div class="muted" style="font-size:12px;margin-top:2px">looks ${dir}</div></div>
+      <button class="secondary small" title="Remove">✕</button>`;
+    li.querySelector("input").addEventListener("input", (ev) => (w.label = ev.target.value));
+    li.querySelector("button").addEventListener("click", () => { state.windows.splice(i, 1); renderWindows(); });
+    ul.appendChild(li);
+  });
+  $("to-step3").disabled = state.windows.length === 0;
+  $("to-step3").textContent = state.windows.length ? `Next: photograph ${state.windows.length} view${state.windows.length > 1 ? "s" : ""}` : "Mark at least one window";
+}
+$("to-step3").addEventListener("click", () => { state.camIndex = 0; show(3); });
+
+// ---------------- STEP 3: camera + orientation sensors ----------------
+let stream = null, orient = null, orientOn = false;
+function handleOrientation(e) {
+  const isAbs = e.absolute === true || e.type === "deviceorientationabsolute";
+  // prefer compass-referenced (absolute) readings when the device delivers both kinds
+  if (!isAbs && orient && orient.absolute && Date.now() - orient.t < 1000 && typeof e.webkitCompassHeading !== "number") return;
+  const iosHeading = typeof e.webkitCompassHeading === "number" ? e.webkitCompassHeading : null;
+  orient = { alpha: e.alpha, beta: e.beta, gamma: e.gamma, absolute: e.absolute === true || e.type === "deviceorientationabsolute",
+             ios_compass: iosHeading, t: Date.now() };
+  updateHud();
+}
+async function startSensors() {
+  let granted = true;
+  try {   // iPhone (and some newer browsers) need an explicit permission request from a tap
+    if (window.DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission === "function")
+      granted = (await DeviceOrientationEvent.requestPermission()) === "granted";
+  } catch (_) { granted = false; }
+  if (!orientOn) {
+    window.addEventListener("deviceorientationabsolute", handleOrientation);
+    window.addEventListener("deviceorientation", handleOrientation);
+    orientOn = true;
+  }
+  // report a problem only if no readings arrive
+  setTimeout(() => { if (!orient && !$("hud").hidden) notice($("cam-msg"), "warn",
+    granted ? "No motion sensor readings – the photo works, but without the phone's direction."
+            : "Motion sensors not allowed – the photo works, but without the phone's direction."); }, 1500);
   return true;
 }
-$("motion-btn").addEventListener("click", async () => {
-  if (!("DeviceMotionEvent" in window) && !("DeviceOrientationEvent" in window)) {
-    $("motion-data").textContent = "This device has no motion sensors available to the browser."; return;
-  }
-  $("motion-btn").disabled = true;
-  try {
-    if (!(await askMotionPermission())) { $("motion-data").textContent = "Permission denied."; $("motion-btn").disabled = false; return; }
-  } catch (e) { $("motion-data").textContent = "Permission request failed: " + e.message; $("motion-btn").disabled = false; return; }
-
-  const samples = []; let last = {};
-  const onOrient = (e) => { last.alpha = e.webkitCompassHeading ?? e.alpha; last.beta = e.beta; last.gamma = e.gamma; };
-  const onMotion = (e) => {
-    const a = e.accelerationIncludingGravity || {};
-    samples.push({ t: Math.round(performance.now()), ax: r(a.x), ay: r(a.y), az: r(a.z),
-      heading: r(last.alpha, 1), tilt_front: r(last.beta, 1), tilt_side: r(last.gamma, 1) });
-    render();
-  };
-  const render = () => {
-    const s = samples[samples.length - 1] || {};
-    $("motion-data").innerHTML = `<div class="grid">
-      <div><b>${s.heading ?? "–"}°</b><span>heading</span></div>
-      <div><b>${s.tilt_front ?? "–"}°</b><span>tilt front/back</span></div>
-      <div><b>${s.tilt_side ?? "–"}°</b><span>tilt left/right</span></div>
-      <div><b>${s.ax ?? "–"}</b><span>accel x m/s²</span></div>
-      <div><b>${s.ay ?? "–"}</b><span>accel y m/s²</span></div>
-      <div><b>${s.az ?? "–"}</b><span>accel z m/s²</span></div></div>`;
-  };
-  window.addEventListener("deviceorientation", onOrient);
-  window.addEventListener("devicemotion", onMotion);
-  $("motion-btn").textContent = "Recording…";
-  setTimeout(() => {
-    window.removeEventListener("deviceorientation", onOrient);
-    window.removeEventListener("devicemotion", onMotion);
-    $("motion-btn").disabled = false; $("motion-btn").textContent = "Record again";
-    if (!samples.length) { $("motion-data").textContent = "No sensor readings received – this device may not have motion sensors."; return; }
-    const t0 = samples[0].t;
-    // keep at most 60 samples (~20 per second) to keep submissions small
-    const step = Math.max(1, Math.ceil(samples.length / 60));
-    state.motion = { duration_s: 3, sample_count: samples.length,
-      samples: samples.filter((_, i) => i % step === 0).map((s) => ({ ...s, t: s.t - t0 })) };
-    $("motion-data").insertAdjacentHTML("beforeend", `<div style="margin-top:8px;color:var(--ok)">✓ ${samples.length} readings recorded</div>`);
-    refreshSend();
-  }, 3000);
-});
-
-// ---------- Photo ----------
-async function readPhotoMeta(file) {
-  if (!window.exifr) return null;
-  try {
-    const t = await exifr.parse(file, { gps: true, tiff: true, exif: true, xmp: false, icc: false, iptc: false });
-    if (!t) return null;
-    const pos = await exifr.gps(file).catch(() => null);   // decimal latitude/longitude
-    if (pos) { t.latitude = pos.latitude; t.longitude = pos.longitude; }
-    const meta = {
-      lat: Number.isFinite(t.latitude) ? Number(t.latitude.toFixed(7)) : null,
-      lon: Number.isFinite(t.longitude) ? Number(t.longitude.toFixed(7)) : null,
-      altitude_m: Number.isFinite(t.GPSAltitude) ? r(t.GPSAltitudeRef === 1 ? -t.GPSAltitude : t.GPSAltitude, 1) : null,
-      direction_deg: Number.isFinite(t.GPSImgDirection) ? r(t.GPSImgDirection, 1) : null,
-      taken: t.DateTimeOriginal instanceof Date ? t.DateTimeOriginal.toISOString() : null,
-      camera: [t.Make, t.Model].filter(Boolean).join(" ") || null,
-    };
-    if (meta.lat == null || meta.lon == null) { meta.lat = meta.lon = null; }
-    return meta;
-  } catch (e) { return null; }
+// Direction the back camera points, from the W3C device orientation angles (Z-X'-Y'' convention)
+function cameraDirection(o) {
+  if (!o || o.beta == null || o.gamma == null) return null;
+  let alpha = o.alpha;
+  if (o.ios_compass != null) alpha = 360 - o.ios_compass;          // iOS: make alpha relative to magnetic north
+  else if (!o.absolute || alpha == null) return { azimuth: null, ...tiltOnly(o) };
+  const a = alpha * D2R, b = o.beta * D2R, g = o.gamma * D2R;
+  const cA = Math.cos(a), sA = Math.sin(a), cB = Math.cos(b), sB = Math.sin(b), cG = Math.cos(g), sG = Math.sin(g);
+  const x = -cA * sG - sA * sB * cG, y = -sA * sG + cA * sB * cG, z = -cB * cG;   // east, north, up
+  return { azimuth: (Math.atan2(x, y) * R2D + 360) % 360, elevation: Math.asin(Math.max(-1, Math.min(1, z))) * R2D };
 }
-async function shrinkImage(file, maxSide = 1600) {
+function tiltOnly(o) {
+  const b = o.beta * D2R, g = o.gamma * D2R;
+  return { elevation: Math.asin(Math.max(-1, Math.min(1, -Math.cos(b) * Math.cos(g)))) * R2D };
+}
+function updateHud() {
+  if ($("hud").hidden) return;
+  const d = cameraDirection(orient), w = state.windows[state.camIndex];
+  if (!d) { $("hud-dir").textContent = "no sensor"; $("hud-tilt").textContent = ""; return; }
+  if (d.azimuth != null) {
+    let txt = `${Math.round(d.azimuth)}° ${compass(d.azimuth)}`, cls = "";
+    if (w && w.wall_azimuth_deg != null) {
+      const diff = Math.abs(((d.azimuth - w.wall_azimuth_deg + 540) % 360) - 180);
+      cls = diff < 25 ? "good" : "bad"; txt += ` · wall ${Math.round(w.wall_azimuth_deg)}°`;
+    }
+    $("hud-dir").className = cls; $("hud-dir").textContent = txt;
+  } else { $("hud-dir").textContent = "compass n/a"; }
+  $("hud-tilt").textContent = `tilt ${d.elevation >= 0 ? "+" : ""}${Math.round(d.elevation)}°`;
+}
+async function startCamera() {
+  $("cam-msg").className = ""; $("cam-msg").innerHTML = "";
+  const sensorsOk = await startSensors();   // must be called from the tap (iOS)
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: false,
+      video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1440 } } });
+    $("video").srcObject = stream; $("video").hidden = false; $("shot").hidden = true;
+    $("hud").hidden = false; $("crosshair").hidden = false;
+    $("cam-start").hidden = true; $("cam-shoot").hidden = false; $("cam-retake").hidden = true;
+    updateHud();
+  } catch (err) {
+    notice($("cam-msg"), "err", "Camera not available (" + esc(err.name || err.message) + "). Use “Upload a photo instead”.");
+  }
+}
+function stopCamera() { if (stream) { stream.getTracks().forEach((t) => t.stop()); stream = null; } }
+function captureRecord(o, source, extra) {
+  const d = cameraDirection(o);
+  return Object.assign({
+    source, time: new Date().toISOString(),
+    camera_azimuth_deg: d ? r(d.azimuth, 1) : null, camera_elevation_deg: d ? r(d.elevation, 1) : null,
+    sensor_raw: o ? { alpha: r(o.alpha, 2), beta: r(o.beta, 2), gamma: r(o.gamma, 2), absolute: o.absolute, ios_compass: r(o.ios_compass, 2) } : null,
+    screen_orientation: (screen.orientation && screen.orientation.type) || null,
+  }, extra || {});
+}
+$("cam-start").addEventListener("click", startCamera);
+$("cam-shoot").addEventListener("click", async () => {
+  const v = $("video"); if (!v.videoWidth) return;
+  const o = orient ? { ...orient } : null;          // sensor snapshot at the moment of the shot
+  const c = document.createElement("canvas"); c.width = v.videoWidth; c.height = v.videoHeight;
+  c.getContext("2d").drawImage(v, 0, 0);
+  const blob = await new Promise((res) => c.toBlob(res, "image/jpeg", 0.88));
+  const track = stream && stream.getVideoTracks()[0], st = track ? track.getSettings() : {};
+  const w = state.windows[state.camIndex];
+  w.photo = { blob, url: URL.createObjectURL(blob), width: c.width, height: c.height };
+  w.capture = captureRecord(o, "camera", { video: { width: st.width || c.width, height: st.height || c.height, zoom: st.zoom || null,
+    device_label: track ? track.label : null } });
+  showShot(w);
+});
+$("cam-retake").addEventListener("click", () => { const w = state.windows[state.camIndex]; delete w.photo; delete w.capture; startCamera(); renderThumbs(); });
+$("cam-file").addEventListener("change", async (e) => {
+  const file = e.target.files[0]; e.target.value = ""; if (!file) return;
+  let meta = null;
+  try { meta = await exifr.parse(file, { gps: true, exif: true, tiff: true, xmp: false, icc: false, iptc: false }); } catch (_) {}
+  const blob = await shrinkImage(file);
+  const w = state.windows[state.camIndex];
+  w.photo = { blob, url: URL.createObjectURL(blob) };
+  w.capture = captureRecord(null, "upload", { exif: meta ? {
+    taken: meta.DateTimeOriginal instanceof Date ? meta.DateTimeOriginal.toISOString() : null,
+    camera: [meta.Make, meta.Model].filter(Boolean).join(" ") || null,
+    focal_35mm: meta.FocalLengthIn35mmFormat || null,
+    image_direction_deg: Number.isFinite(meta.GPSImgDirection) ? r(meta.GPSImgDirection, 1) : null,
+    lat: Number.isFinite(meta.latitude) ? meta.latitude : null, lon: Number.isFinite(meta.longitude) ? meta.longitude : null,
+  } : null });
+  stopCamera(); showShot(w);
+});
+async function shrinkImage(file, maxSide = 2000) {
   const bmp = await createImageBitmap(file, { imageOrientation: "from-image" }).catch(() => null);
-  if (!bmp) return file; // unsupported format: send as is
-  const scale = Math.min(1, maxSide / Math.max(bmp.width, bmp.height));
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.round(bmp.width * scale); canvas.height = Math.round(bmp.height * scale);
-  canvas.getContext("2d").drawImage(bmp, 0, 0, canvas.width, canvas.height);
-  return await new Promise((res) => canvas.toBlob(res, "image/jpeg", 0.85));
+  if (!bmp) return file;
+  const s = Math.min(1, maxSide / Math.max(bmp.width, bmp.height)), c = document.createElement("canvas");
+  c.width = Math.round(bmp.width * s); c.height = Math.round(bmp.height * s);
+  c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+  return await new Promise((res) => c.toBlob(res, "image/jpeg", 0.88));
 }
-$("photo-input").addEventListener("change", async (e) => {
-  const file = e.target.files[0]; if (!file) return;
-  if (file.size > 25 * 1024 * 1024) { $("photo-data").textContent = "File is too large (max 25 MB)."; return; }
-  $("photo-data").textContent = "Reading photo…";
-  state.photoMeta = await readPhotoMeta(file);
-  const blob = await shrinkImage(file);   // the shrunk copy carries no metadata
-  state.photo = { blob, name: file.name };
-  $("photo-preview").src = URL.createObjectURL(blob); $("photo-preview").hidden = false;
-  const m = state.photoMeta || {};
-  let info = `${file.name} · ${(blob.size / 1024).toFixed(0)} KB`;
-  if (m.lat != null) {
-    const maps = `https://www.openstreetmap.org/?mlat=${m.lat}&mlon=${m.lon}#map=17/${m.lat}/${m.lon}`;
-    info += `<br>📍 Photo taken at <a style="color:var(--accent)" target="_blank" rel="noopener" href="${maps}">${m.lat.toFixed(5)}, ${m.lon.toFixed(5)}</a>` +
-            (m.altitude_m != null ? ` · altitude ${Math.round(m.altitude_m)} m` : "");
-  } else {
-    info += `<br><span style="color:var(--warn)">No GPS position in this photo</span> – phones often remove it when uploading. Use 📍 Location above to add where you are now.`;
+function showShot(w) {
+  stopCamera();
+  $("video").hidden = true; $("shot").src = w.photo.url; $("shot").hidden = false;
+  $("crosshair").hidden = true; $("hud").hidden = true;
+  $("cam-start").hidden = true; $("cam-shoot").hidden = true; $("cam-retake").hidden = false;
+  const c = w.capture || {}; let info = "✓ Photo saved";
+  if (c.camera_azimuth_deg != null) {
+    info += ` · phone pointed ${Math.round(c.camera_azimuth_deg)}° ${compass(c.camera_azimuth_deg)}, tilt ${Math.round(c.camera_elevation_deg)}°`;
+    if (w.wall_azimuth_deg != null) {
+      const diff = Math.round(Math.abs(((c.camera_azimuth_deg - w.wall_azimuth_deg + 540) % 360) - 180));
+      info += diff > 35 ? `<br><span style="color:var(--warn)">That's ${diff}° away from the wall direction on the map – fine if you shot at an angle; otherwise retake.</span>` : ` (wall: ${Math.round(w.wall_azimuth_deg)}°)`;
+    }
+  } else if (c.camera_elevation_deg != null) info += ` · tilt ${Math.round(c.camera_elevation_deg)}°`;
+  notice($("cam-msg"), "ok", info);
+  renderThumbs(); updateCamNext();
+}
+function openWindow(i) {
+  state.camIndex = i; const w = state.windows[i];
+  $("cam-title").textContent = `3 · View from window ${i + 1} of ${state.windows.length}` + (w.label ? ` – ${w.label}` : "");
+  $("cam-msg").className = ""; $("cam-msg").innerHTML = "";
+  if (w.photo) showShot(w);
+  else {
+    $("shot").hidden = true; $("video").hidden = false; $("crosshair").hidden = false; $("hud").hidden = true;
+    $("cam-start").hidden = false; $("cam-shoot").hidden = true; $("cam-retake").hidden = true;
+    $("cam-start").textContent = stream ? "Camera on" : "Start camera";
+    if (stream) startCamera();
   }
-  if (m.taken) info += `<br>🕒 Taken ${new Date(m.taken).toLocaleString()}`;
-  if (m.camera) info += ` · ${m.camera}`;
-  $("photo-data").innerHTML = info;
-  refreshSend();
+  renderThumbs(); updateCamNext();
+}
+function renderThumbs() {
+  const t = $("thumbs"); t.innerHTML = "";
+  state.windows.forEach((w, i) => {
+    const el = document.createElement(w.photo ? "img" : "button");
+    if (w.photo) el.src = w.photo.url; else { el.textContent = i + 1; el.className = "secondary small"; el.style.width = "72px"; el.style.height = "96px"; }
+    if (i === state.camIndex) el.style.borderColor = "var(--accent)";
+    el.addEventListener("click", () => openWindow(i));
+    t.appendChild(el);
+  });
+}
+function updateCamNext() {
+  const last = state.camIndex >= state.windows.length - 1, done = state.windows.filter((w) => w.photo).length;
+  $("cam-next").disabled = !state.windows[state.camIndex].photo;
+  $("cam-next").textContent = last ? `Review (${done}/${state.windows.length} photos)` : "Next window";
+}
+$("cam-next").addEventListener("click", () => {
+  if (state.camIndex < state.windows.length - 1) openWindow(state.camIndex + 1); else show(4);
 });
 
-// ---------- Send ----------
-// "device": where the visitor is now (📍 button); "photo": where the photo was taken (from its metadata)
-function locationPayload() {
-  const photo = state.photo && state.photoMeta && (state.photoMeta.lat != null || state.photoMeta.taken) ? state.photoMeta : null;
-  if (!state.location && !photo) return null;
-  return { device: state.location, photo };
+// ---------------- STEP 4: summary + send ----------------
+let map2, sumLayers, sumWins;
+function buildSummary() {
+  if (!map2) { map2 = L.map("map2", { attributionControl: true }); sumLayers = L.layerGroup().addTo(map2); sumWins = L.layerGroup().addTo(map2); }
+  map2.eachLayer((l) => { if (l instanceof L.TileLayer) map2.removeLayer(l); });
+  imageryLayer(state.address.lat, state.address.lon).addTo(map2);
+  sumLayers.clearLayers();
+  if (state.building) sumLayers.addLayer(L.polygon(state.building.ring, { color: "#7aa2ff", weight: 3, fillOpacity: 0.12 }));
+  drawWindowsOn(sumWins, 40);
+  const pts = state.windows.map((w) => [w.lat, w.lon]).concat(state.building ? state.building.ring : [[state.address.lat, state.address.lon]]);
+  setTimeout(() => { map2.invalidateSize(); map2.fitBounds(L.latLngBounds(pts), { padding: [60, 60], maxZoom: 20 }); }, 60);
+  const rows = state.windows.map((w, i) => {
+    const c = w.capture || {};
+    const az = w.wall_azimuth_deg != null ? `${Math.round(w.wall_azimuth_deg)}° ${compass(w.wall_azimuth_deg)}`
+             : c.camera_azimuth_deg != null ? `${Math.round(c.camera_azimuth_deg)}° (phone)` : "–";
+    return `<tr><td><span class="badge">${i + 1}</span></td><td>${esc(w.label || "Window " + (i + 1))}</td><td>${az}</td>
+      <td>${c.camera_elevation_deg != null ? "tilt " + Math.round(c.camera_elevation_deg) + "°" : ""}</td><td>${w.photo ? "📷" : "–"}</td></tr>`;
+  }).join("");
+  $("sum").innerHTML = `<tr><td colspan="5" class="muted">${esc(state.address.label)} · floor ${esc($("floor").value)}</td></tr>` + rows;
+  refreshSend();
 }
+$("consent").addEventListener("change", refreshSend);
+function refreshSend() { $("send").disabled = !($("consent").checked && state.windows.some((w) => w.photo)); }
 function headers(extra) {
   const h = { apikey: cfg.SUPABASE_KEY, ...extra };
-  if (cfg.SUPABASE_KEY.startsWith("eyJ")) h.Authorization = "Bearer " + cfg.SUPABASE_KEY; // legacy anon JWT key
+  if (cfg.SUPABASE_KEY.startsWith("eyJ")) h.Authorization = "Bearer " + cfg.SUPABASE_KEY;
   return h;
 }
+function payload(id, photoPaths) {
+  return {
+    id, address: state.address.label, lat: state.address.lat, lon: state.address.lon, floor: Number($("floor").value) || 0,
+    building: state.building ? { osm_id: state.building.osm_id, ring: state.building.ring, levels: state.building.levels, height_m: state.building.height } : null,
+    windows: state.windows.map((w, i) => ({
+      n: i + 1, label: w.label || null, lat: w.lat, lon: w.lon, wall_azimuth_deg: w.wall_azimuth_deg, placed_by: w.source,
+      photo_path: photoPaths[w.id] || null, capture: w.capture || null })),
+    client: { user_agent: navigator.userAgent, screen: [screen.width, screen.height], dpr: devicePixelRatio, address_source: state.address.source },
+  };
+}
 $("send").addEventListener("click", async () => {
-  const msg = $("send-msg");
-  const note = $("note").value.trim() || null;
-  if (!backendReady) {
-    setNotice(msg, "info", "Preview mode – this would be sent: " +
-      JSON.stringify({ location: locationPayload(), motion: state.motion ? `${state.motion.sample_count} readings` : null,
-                       photo: state.photo ? state.photo.name : null, note }));
-    return;
-  }
-  $("send").disabled = true; setNotice(msg, "info", "Sending…");
+  const msg = $("send-msg"), id = crypto.randomUUID();
+  if (!backendReady) { notice(msg, "info", "Preview mode – would send: " + esc(JSON.stringify(payload(id, {})).slice(0, 600)) + "…"); return; }
+  $("send").disabled = true;
   try {
-    let photo_path = null;
-    if (state.photo) {
-      photo_path = `${new Date().toISOString().slice(0, 10)}/${crypto.randomUUID()}.jpg`;
-      const up = await fetch(`${cfg.SUPABASE_URL}/storage/v1/object/${cfg.PHOTO_BUCKET}/${photo_path}`, {
-        method: "POST", headers: headers({ "Content-Type": state.photo.blob.type || "image/jpeg" }), body: state.photo.blob });
+    const paths = {}, withPhotos = state.windows.filter((w) => w.photo);
+    for (let i = 0; i < withPhotos.length; i++) {
+      const w = withPhotos[i]; notice(msg, "info", `Uploading photo ${i + 1} of ${withPhotos.length}…`);
+      const path = `${id}/window-${state.windows.indexOf(w) + 1}.jpg`;
+      const up = await fetch(`${cfg.SUPABASE_URL}/storage/v1/object/${cfg.PHOTO_BUCKET}/${path}`,
+        { method: "POST", headers: headers({ "Content-Type": "image/jpeg" }), body: w.photo.blob });
       if (!up.ok) throw new Error("photo upload failed (" + up.status + ")");
+      paths[w.id] = path;
     }
-    const res = await fetch(`${cfg.SUPABASE_URL}/rest/v1/${cfg.TABLE}`, {
-      method: "POST", headers: headers({ "Content-Type": "application/json", Prefer: "return=minimal" }),
-      body: JSON.stringify({ location: locationPayload(), motion: state.motion, photo_path, note }) });
+    notice(msg, "info", "Saving…");
+    const res = await fetch(`${cfg.SUPABASE_URL}/rest/v1/${cfg.APARTMENTS_TABLE || "apartments"}`, {
+      method: "POST", headers: headers({ "Content-Type": "application/json", Prefer: "return=minimal" }), body: JSON.stringify(payload(id, paths)) });
     if (!res.ok) throw new Error("saving failed (" + res.status + ")");
-    setNotice(msg, "ok", "✓ Sent – thank you!");
+    notice(msg, "ok", "✓ Sent – your spaceship is registered. Thank you!");
   } catch (e) {
-    setNotice(msg, "err", "Could not send: " + e.message + ". Please try again.");
-    $("send").disabled = false;
+    notice(msg, "err", "Could not send: " + esc(e.message) + ". Please try again."); $("send").disabled = false;
   }
 });
+
+show(1);
 </script>
 </body>
 </html>
