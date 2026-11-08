@@ -145,7 +145,7 @@
     const lst = lstDeg(view.time, view.lon), inside = (p, m = 0) => p && p[0] > -m && p[0] < W + m && p[1] > -m && p[1] < H + m;
     const scale = Math.max(0.9, H / 520), place = placer();
     // constellation lines + names
-    k.lineWidth = 1.2 * scale; k.strokeStyle = "rgba(125,252,255,.38)";
+    k.lineWidth = 1.2 * scale; k.strokeStyle = "rgba(143,211,255,.32)";
     catalog.cons.forEach((c) => {
       c.l.forEach((seg) => {
         k.beginPath(); let started = false;
@@ -158,7 +158,7 @@
       });
       const cv = horizVec(c.p[0], c.p[1], view.lat, lst), p = proj(cv);
       if (inside(p, -20) && altOf(cv) > 0) {
-        k.fillStyle = "rgba(125,252,255,.55)"; k.font = `600 ${Math.round(10 * scale)}px ui-monospace,monospace`; k.textAlign = "center";
+        k.fillStyle = "rgba(170,215,255,.55)"; k.font = `500 ${Math.round(10.5 * scale)}px -apple-system,BlinkMacSystemFont,sans-serif`; k.textAlign = "center";
         const y = place(p[0] - 40 * scale, p[1], 80 * scale, 11 * scale);
         k.fillText(c.n.toUpperCase(), p[0], y); info.inView.push({ type: "constellation", name: c.n });
       }
@@ -210,7 +210,7 @@
       const ill = window.Astronomy && b.name !== "Sun" ? Astronomy.Illumination(b.name, view.time) : null;
       objects.push({ type: "body", x: p[0], y: p[1], r: r * 1.5, name: b.name, sym: b.sym, alt: b.alt, az: b.az, phase: b.phase,
                      mag: ill ? ill.mag : -26.7, distAU: ill ? ill.geo_dist : 1 });
-      k.fillStyle = "#ff9be6"; k.font = `700 ${Math.round(11 * scale)}px ui-monospace,monospace`; k.textAlign = "left";
+      k.fillStyle = "#ffb3e6"; k.font = `600 ${Math.round(11.5 * scale)}px -apple-system,BlinkMacSystemFont,sans-serif`; k.textAlign = "left";
       const label = `${b.sym} ${b.name.toUpperCase()}`;
       const y = place(p[0] + r + 5, p[1] + 4, label.length * 7.5 * scale, 13 * scale);
       k.fillText(label, p[0] + r + 5, y);
@@ -240,7 +240,7 @@
       g.strokeStyle = "rgba(125,252,255,.55)"; g.lineWidth = 1.5 * scale; g.shadowColor = "#7dfcff"; g.shadowBlur = 12 * scale; g.stroke();
       g.restore();
       // compass labels along the horizon
-      g.save(); g.fillStyle = "rgba(125,252,255,.7)"; g.font = `700 ${Math.round(11 * scale)}px ui-monospace,monospace`; g.textAlign = "center";
+      g.save(); g.fillStyle = "rgba(143,211,255,.75)"; g.font = `500 ${Math.round(11 * scale)}px -apple-system,BlinkMacSystemFont,sans-serif`; g.textAlign = "center";
       ["N", "NE", "E", "SE", "S", "SW", "W", "NW"].forEach((n, i) => {
         const p = proj(vecAzAlt(i * 45, 0)); if (p && p[0] > 10 && p[0] < W - 10 && !(p[0] > ox && p[0] < ox + pw && p[1] > oy && p[1] < oy + ph)) g.fillText(n, p[0], p[1] + 16 * scale);
       });

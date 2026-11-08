@@ -25,6 +25,8 @@ In the cockpit (★ SPACE) the open sky in each window photo is replaced by the 
 
 ## Ship composition (200 m scan)
 
+`web/scanfx.js` plays the spectral 200 m scan (MRI-style base, biodiversity spectrum, contour lines, structure edges) on the main stage; `web/sound.js` is the optional generative Soundsphere.
+
 `web/compose.js` turns the surroundings into ship parameters (spec v1, downloadable as JSON in the page):
 - Satellite classification within 200 m (greenery, water, roofs, streets & paved, shade) + OpenStreetMap counts (buildings & floors, roads, tram/rail, water, parks, trees, shops, facilities) + the building's own geometry and windows.
 - `stats` (0–99): speed, acceleration, turn, tilt, hull, shield, sensors, energy, stealth, lifeSupport, trade.

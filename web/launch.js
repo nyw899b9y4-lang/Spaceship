@@ -308,11 +308,11 @@
     g.fillStyle = gv; g.fillRect(0, 0, c.width, c.height);
     return c;
   }
-  function startIntro() {
+  function startIntro(skip = 0) {
     if (!ui) return;
     const cv = ui.q(".lv-intro"); cv.hidden = false; cv.style.opacity = 1;
     ui.q(".lv-caption").hidden = false; ui.q(".lv-caption").textContent = "ACQUIRING SATELLITE LINK…";
-    intro = { t0: null, ground: null, wide: null, ready: false, cv, g: cv.getContext("2d"),
+    intro = { t0: null, skip, ground: null, wide: null, ready: false, cv, g: cv.getContext("2d"),
               tmp: document.createElement("canvas"), silhouette: null };
     const g0 = intro.g; g0.fillStyle = PAL.space; g0.fillRect(0, 0, cv.width, cv.height);
     // silhouette of the hull for the lift-off shadow
@@ -388,10 +388,10 @@
   function drawIntro(ts) {
     const it = intro; if (!it || !it.ready) return;
     if (it.t0 == null) { it.t0 = ts; it.last = ts; }
-    let t = (ts - it.t0) / 1000;
+    let t = (ts - it.t0) / 1000 + (it.skip || 0);
     const res = ui.spec, g = it.g, CW = W * K, CH = H * K;
     // wait (max 5 s) at the start of the scan until the satellite classification is ready
-    if (t > 2 && t < 2.1 && !(res && res.overlay) && (it.waited || 0) < 5) { it.waited = (it.waited || 0) + (ts - it.last) / 1000; it.t0 += ts - it.last; t = (ts - it.t0) / 1000; }
+    if (t > 2 && t < 2.1 && !(res && res.overlay) && (it.waited || 0) < 5) { it.waited = (it.waited || 0) + (ts - it.last) / 1000; it.t0 += ts - it.last; t = (ts - it.t0) / 1000 + (it.skip || 0); }
     it.last = ts;
     g.imageSmoothingEnabled = true;
     const cap = ui.q(".lv-caption");
@@ -524,9 +524,7 @@
     cap.textContent = t < 2 ? `APPROACHING ${town || "TARGET"} · ALT ${alt} M` : t < 6 ? `SCANNING ${name} + 200 M` : t < 8.5 ? "COMPOSING SHIP DNA…"
       : t < 10.5 ? `TARGET LOCK: ${name}` : t < 12.2 ? "CONVERTING STRUCTURE…" : t < 13.6 ? "FITTING MODULES" : t < 14.4 ? "SYSTEMS ONLINE" : "LIFT-OFF";
     cap.classList.toggle("go", t >= 14.4);
-    if (t >= 2 && t < 8.5) scanHud(t, res, t < 6 ? "scan" : "compose", t < 6 ? scan : comp);
-    else if (t >= 12.2 && t < 14.4) scanHud(t, res, "modules", mods);
-    else { const h = ui.q(".lv-scanhud"); if (h) h.hidden = true; }
+    const hud0 = ui.q(".lv-scanhud"); if (hud0) hud0.hidden = true;   // the scan now plays on the main stage
     if (out > 0) it.cv.style.opacity = String(1 - out);
     if (t >= 16.2) { it.cv.hidden = true; cap.hidden = true; const h = ui.q(".lv-scanhud"); if (h) h.hidden = true; intro = null; }
   }
@@ -636,41 +634,66 @@
   function renderSpec(res) {
     if (!ui) return;
     const root = ui.root.querySelector("#lv-spec"); ui.spec = res;
-    const share = res.satellite && res.satellite.share, o = res.osm;
-    const bars = STAT_LABELS.map(([k, l]) => {
-      const v = res.stats[k], segs = Math.round(v / 5);
-      return `<div class="sp-bar"><span>${l}</span><i>${"▮".repeat(segs)}<em>${"▮".repeat(20 - segs)}</em></i><b>${v}</b></div>`;
-    }).join("");
-    const legend = share ? Object.keys(CLS_LABEL).map((k) => {
-      const c = SpaceshipCompose.CLASS[k];
-      return `<div><s style="background:rgb(${c.join(",")})"></s>${CLS_LABEL[k]} <b>${Math.round(share[k] * 100)}%</b></div>`;
-    }).join("") : "<div class='muted'>Satellite analysis…</div>";
-    const osmLine = o ? `${o.buildings} buildings${o.avgLevels ? ` (Ø ${o.avgLevels.toFixed(1)} floors)` : ""} · ${o.roads + o.majorRoads} roads${o.majorRoads ? ` (${o.majorRoads} main)` : ""}` +
-      `${o.tram ? " · tram" : ""}${o.rail ? " · rail" : ""}${o.water ? " · water" : ""} · ${o.parks + o.green} green areas · ${o.trees} trees · ${o.shops + o.food} shops/cafés · ${o.amenities} facilities`
-      : res.status.osm === "failed" ? "OpenStreetMap not reachable – using estimates" : "Loading OpenStreetMap data… (up to ~40 s)";
-    const p = res.physics, geo = res.geometry;
-    root.innerHTML = `<div class="sp-head"><b>SHIP COMPOSITION</b><span>200 M SCAN · ${geo.area.toFixed(0)} M² HULL · ${geo.levels} DECKS</span></div>
-      <div class="sp-top">
-        <div class="sp-map"><canvas width="360" height="360"></canvas><button type="button" class="sp-toggle">${ui.specOverlay ? "◐ PHOTO" : "◑ ANALYSIS"}</button></div>
-        <div class="sp-right"><div class="sp-legend">${legend}</div><div class="sp-osm">${osmLine}</div>
-          <div class="sp-phys"><span>MAX SPEED <b>${p.max_speed}</b></span><span>TURN <b>${p.turn_rate_deg_s}°/s</b></span>
-          <span>PITCH <b>${p.pitch_rate_deg_s}°/s</b></span><span>ROLL <b>${p.roll_rate_deg_s}°/s</b></span>
-          <span>MAX TILT <b>${p.max_tilt_deg}°</b></span><span>ENGINES <b>${p.engines}</b></span>
-          <span>MASS <b>${p.mass_t.toLocaleString()} t</b></span><span>SENSOR RANGE <b>${p.sensor_range} m</b></span></div></div>
-      </div>
-      <div class="sp-stats">${bars}</div>
-      <div class="sp-caps">${res.capabilities.map((c) => `<span title="${c.desc}">◆ ${c.name}<small>${c.desc}</small></span>`).join("") || "<span>No special capabilities yet</span>"}</div>
-      <div class="sp-foot"><button type="button" class="sp-dl">⬇ Ship spec (JSON)</button>
-        <small>Sources: ${res.status.satellite === "ok" ? "satellite ✓" : "satellite …"} · ${res.status.osm === "ok" ? "OpenStreetMap ✓" : res.status.osm === "failed" ? "OpenStreetMap ✗" : "OpenStreetMap …"}</small></div>`;
-    root.querySelector(".sp-toggle").addEventListener("click", () => { ui.specOverlay = !ui.specOverlay; renderSpec(ui.spec); });
-    root.querySelector(".sp-dl").addEventListener("click", () => {
+    const st = res.stats, agility = Math.round((st.turn + st.tilt) / 2);
+    const bars = [["Speed", st.speed], ["Agility", agility], ["Shield", st.shield], ["Sensors", st.sensors], ["Energy", st.energy]]
+      .map(([l, v]) => `<div class="cp-bar"><span>${l}</span><i><em style="width:${v}%"></em></i><b>${v}</b></div>`).join("");
+    const tags = res.capabilities.map((c) => `<span title="${c.desc}">${c.name}</span>`).join("");
+    root.innerHTML = `<div class="ly-head"><span>Composition</span><small>200 m · ${res.status.satellite === "ok" && res.status.osm === "ok" ? "complete" : "scanning…"}</small></div>
+      <div class="cp-row"><div class="cp-thumb"></div><div class="cp-bars">${bars}</div></div>
+      <div class="cp-tags">${tags}</div>
+      <div class="cp-actions"><button type="button" class="cp-scan">↻ Scan</button>
+        <button type="button" class="cp-sound">${window.SpaceshipSound && SpaceshipSound.on ? "🔊 Sound on" : "🔈 Soundsphere"}</button>
+        <button type="button" class="cp-dl">⬇ JSON</button></div>`;
+    if (ui.scanData) root.querySelector(".cp-thumb").appendChild(SpaceshipScan.thumbnail(ui.scanData, 180));
+    root.querySelector(".cp-scan").addEventListener("click", () => playScan(true));
+    root.querySelector(".cp-sound").addEventListener("click", toggleSound);
+    root.querySelector(".cp-dl").addEventListener("click", () => {
       const blob = new Blob([SpaceshipCompose.specJSON(ui.spec, cur)], { type: "application/json" });
       const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
       a.download = "spaceship-" + (cur.address.label || "ship").split(/\s\d{4}/)[0].replace(/[^\w]+/g, "-").toLowerCase() + ".json"; a.click();
     });
-    drawSpecMap(res);
+    // first time the satellite image is in: prepare the spectral scan and play it on the main stage
+    if (res.satImage && !ui.scanData && window.SpaceshipScan) {
+      ui.scanData = SpaceshipScan.prepare(res, outlineRing(cur), cur.windows);
+      if (ui.scanData) { root.querySelector(".cp-thumb").appendChild(SpaceshipScan.thumbnail(ui.scanData, 180)); if (!ui.scanPlayed) playScan(false); }
+    }
+    if (window.SpaceshipSound && SpaceshipSound.on && ui.soundScene !== res.status.osm) { ui.soundScene = res.status.osm; SpaceshipSound.restart(res); }
     // modules on the pixel ship (after the roof skin is in place)
     (ui.groundP || Promise.resolve()).then(() => { if (ui && ship) ship.decorate(res); });
+  }
+  // ---------- main-stage spectral scan + sound ----------
+  function playScan(manual) {
+    if (!ui || !ui.scanData) return;
+    ui.scanPlayed = true;
+    const cv = ui.q(".st-scan"), skip = ui.q(".st-skip");
+    if (ui.scanCtl) ui.scanCtl.stop();
+    cv.hidden = false; skip.hidden = false; cv.style.opacity = 1;
+    const res = ui.spec, sh = res.satellite && res.satellite.share, o = res.osm, geo = res.geometry;
+    const labels = [];
+    if (sh) { labels.push(`greenery ${Math.round(sh.veg * 100)} %`); labels.push(`sealed & paved ${Math.round((sh.paved + sh.roof) * 100)} %`); }
+    if (o) labels.push(`${o.buildings} structures · ${o.trees} trees`);
+    labels.push(`${geo.windows} windows · ${Math.round(geo.spreadDeg)}° view`);
+    const done = () => {
+      if (!ui) return;
+      cv.hidden = true; skip.hidden = true; ui.scanCtl = null;
+      if (window.SpaceshipSound) SpaceshipSound.scanEnd();
+      startIntro(8.5);                                   // the small ship converts and lifts off
+    };
+    ui.scanCtl = SpaceshipScan.play(cv, ui.scanData, { labels, onDone: done, onSlice: (v) => window.SpaceshipSound && SpaceshipSound.scan(v) });
+    skip.onclick = () => { if (ui.scanCtl) ui.scanCtl.stop(); done(); };
+  }
+  async function toggleSound() {
+    if (!window.SpaceshipSound) return;
+    if (SpaceshipSound.on) SpaceshipSound.stop(); else { await SpaceshipSound.start(ui.spec); ui.soundScene = ui.spec && ui.spec.status.osm; }
+    if (ui.spec) renderSpec(ui.spec);
+  }
+  // star shimmer: now and then a bright star in view "rings"
+  function starShimmer() {
+    if (!ui || !window.SpaceshipSound || !SpaceshipSound.on || !ui.skyInfo || !ui.skyInfo.objects) return;
+    const stars = ui.skyInfo.objects.filter((o) => o.type === "star" && o.mag < 3.2 && (!ui.skyInfo.visibleAt || ui.skyInfo.visibleAt(o.x, o.y)));
+    if (!stars.length) return;
+    const o = stars[Math.floor(Math.random() * stars.length)], cv = ui.view.querySelector(".ck-sky");
+    SpaceshipSound.star(cv ? o.x / cv.width : 0.5, o.mag);
   }
 
   // ---------- real sky in the window ----------
@@ -781,6 +804,7 @@
     }
   }
   function drawRadar(t) {
+    if (!ui.radar) return;
     const cv = ui.radar, g = cv.getContext("2d"), S = cv.width, st = cur;
     g.clearRect(0, 0, S, S);
     g.strokeStyle = "rgba(125,252,255,.25)"; g.lineWidth = 1;
@@ -817,51 +841,51 @@
     const floor = Number(document.getElementById("floor").value) || 0;
     const name = (st.address.label || "").split(/[,·]/)[0].toUpperCase();
     root.innerHTML = `
-      <div class="lv-grid">
-        <div class="lv-pixel">
-          <canvas class="lv-main" width="${W}" height="${H}"></canvas>
-          <canvas class="lv-intro" width="${W * K}" height="${H * K}" hidden></canvas>
-          <div class="lv-caption" hidden></div>
-          <div class="lv-scanhud" hidden></div>
-          <canvas class="lv-origin" width="${W * 2}" height="${H * 2}" title="Origin: your building from above"></canvas>
-          <button class="lv-replay" type="button">↺ Replay take-off</button>
-          <div class="lv-hud lv-tl">${String(Math.round(st.windows.length * 1000 + floor * 137 + 4242)).padStart(5, "0")}</div>
-          <div class="lv-hud lv-tr">DECK ${floor}</div>
-          <div class="lv-hud lv-bl">${name.slice(0, 26)}</div>
-          <div class="lv-hud lv-br">PORTS ${st.windows.length}</div>
-        </div>
-        <div class="lv-spec" id="lv-spec"><div class="sp-head"><b>SHIP COMPOSITION</b><span>200 M SCAN</span></div>
-          <div class="sp-status">Scanning the surroundings…</div></div>
+      <div class="lv-stage">
         <div class="lv-cockpit">
           <div class="ck-view" id="ck-view"></div>
-          <div class="ck-scan"></div>
           <svg class="ck-frame" viewBox="0 0 1000 640" preserveAspectRatio="none" aria-hidden="true">
-            <defs><linearGradient id="ckm" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#1b2338"/><stop offset="1" stop-color="#080b14"/></linearGradient></defs>
-            <path d="M0 0 H1000 V70 Q760 32 500 30 Q240 32 0 70 Z" fill="url(#ckm)"/>
-            <path d="M0 0 V640 H70 L170 70 Q90 60 0 70 Z" fill="url(#ckm)"/>
-            <path d="M1000 0 V640 H930 L830 70 Q910 60 1000 70 Z" fill="url(#ckm)"/>
-            <path d="M0 470 Q500 420 1000 470 V640 H0 Z" fill="url(#ckm)"/>
-            <path d="M170 70 Q500 18 830 70" stroke="#7dfcff" stroke-opacity=".35" stroke-width="2" fill="none"/>
-            <path d="M170 70 L80 470 M830 70 L920 470" stroke="#7dfcff" stroke-opacity=".25" stroke-width="2"/>
-            <path d="M0 470 Q500 420 1000 470" stroke="#7dfcff" stroke-opacity=".45" stroke-width="2" fill="none"/>
+            <defs><linearGradient id="ckm" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#0d1222"/><stop offset="1" stop-color="#03050b"/></linearGradient></defs>
+            <path d="M0 0 H1000 V34 Q760 14 500 12 Q240 14 0 34 Z" fill="url(#ckm)"/>
+            <path d="M0 0 V640 H22 L70 34 Q30 30 0 34 Z" fill="url(#ckm)"/>
+            <path d="M1000 0 V640 H978 L930 34 Q970 30 1000 34 Z" fill="url(#ckm)"/>
+            <path d="M0 612 Q500 590 1000 612 V640 H0 Z" fill="url(#ckm)"/>
+            <path d="M70 34 Q500 4 930 34" stroke="#8fd3ff" stroke-opacity=".25" stroke-width="1.5" fill="none"/>
+            <path d="M70 34 L22 640 M930 34 L978 640" stroke="#8fd3ff" stroke-opacity=".15" stroke-width="1.5"/>
           </svg>
-          <div class="ck-dash">
-            <div class="ck-panel ck-wins"><button class="ck-mode" type="button" title="Real stars / original photo">★ SPACE</button></div>
-            <canvas class="ck-radar" width="120" height="120"></canvas>
-            <div class="ck-panel ck-clock"><div class="row" style="gap:6px;align-items:baseline"><span id="ck-time">--:--</span>
-              <button class="ck-now" type="button">NOW</button></div>
-              <input class="ck-slider" type="range" min="-12" max="12" step="0.25" value="0" aria-label="Time offset in hours">
-              <small id="ck-date">NOW · LIVE</small></div>
-          </div>
         </div>
-        <div class="lv-info">
+        <canvas class="st-scan" hidden></canvas>
+        <button class="st-skip" type="button" hidden>Skip scan ›</button>
+
+        <div class="ly ly-tl">
+          <div class="ly-head"><span>${(st.address.label || "").replace(/</g, "&lt;")}</span><small>deck ${floor}</small></div>
+          <div class="ck-wins"><button class="ck-mode" type="button" title="Real stars / original photo">★ Space</button></div>
+        </div>
+        <div class="ly ly-tr">
+          <div class="row" style="gap:8px;align-items:baseline;justify-content:space-between"><span id="ck-time">--:--</span><button class="ck-now" type="button">Now</button></div>
+          <input class="ck-slider" type="range" min="-12" max="12" step="0.25" value="0" aria-label="Time offset in hours">
+          <small id="ck-date">now · live</small><small id="ck-sun"></small>
+        </div>
+        <div class="ly ly-bc lv-info">
           <div class="ck-tape" id="ck-tape"></div>
           <div class="li-row">
-            <div class="li-col"><b id="ck-name">–</b><span>HDG <i id="ck-hdg">–</i></span><span>TILT <i id="ck-tilt">–</i></span></div>
+            <div class="li-col"><b id="ck-name">–</b><span>hdg <i id="ck-hdg">–</i> · tilt <i id="ck-tilt">–</i></span></div>
             <div class="li-col li-mid" id="ck-sky-info"></div>
-            <div class="li-col li-right"><span id="ck-alt">–</span><span id="ck-pos">–</span><span id="ck-src">–</span><span id="ck-sun"></span></div>
+            <div class="li-col li-right"><span id="ck-alt">–</span><span id="ck-src">–</span><span id="ck-pos" hidden>–</span></div>
           </div>
         </div>
+        <div class="ly ly-bl">
+          <div class="ly-head"><span>Ship</span><small>${st.windows.length} ports</small></div>
+          <div class="lv-pixel">
+            <canvas class="lv-main" width="${W}" height="${H}"></canvas>
+            <canvas class="lv-intro" width="${W * K}" height="${H * K}" hidden></canvas>
+            <div class="lv-caption" hidden></div>
+            <div class="lv-scanhud" hidden></div>
+            <canvas class="lv-origin" width="${W * 2}" height="${H * 2}" title="Origin: your building from above"></canvas>
+            <button class="lv-replay" type="button">↺ Take-off</button>
+          </div>
+        </div>
+        <div class="ly ly-br" id="lv-spec"><div class="ly-head"><span>Composition</span><small>scanning…</small></div></div>
       </div>`;
     const q = (s) => root.querySelector(s), qa = (s) => root.querySelectorAll(s);
     const cvs = root.querySelector(".lv-main"), ctx = cvs.getContext("2d");
@@ -882,7 +906,7 @@
     ui.timeOffsetH = 0; ui.skyMode = "space";
     const modeBtn = q(".ck-mode");
     modeBtn.addEventListener("click", () => { ui.skyMode = ui.skyMode === "space" ? "photo" : "space";
-      modeBtn.textContent = ui.skyMode === "space" ? "★ SPACE" : "▣ PHOTO"; renderSky(); });
+      modeBtn.textContent = ui.skyMode === "space" ? "★ Space" : "▣ Photo"; renderSky(); });
     const slider = q(".ck-slider");
     slider.addEventListener("input", () => { ui.timeOffsetH = Number(slider.value); renderSky(); });
     q(".ck-now").addEventListener("click", () => { slider.value = 0; ui.timeOffsetH = 0; renderSky(); });
@@ -893,7 +917,11 @@
     ship = buildShip(st); initStars(); lasers = []; active = 0;
     selectWindow(0, st);
     // origin inset: the real building from above with its outline – stays visible during flight
-    startIntro();
+    // the small ship waits for the main-stage scan; prepare its satellite layers meanwhile
+    ui.groundP = buildGround(st, ship, 1); ui.midP = buildGround(st, ship, 3, 1.5); ui.wideP = buildGround(st, ship, WIDE, 2);
+    ui.groundP.then((c) => { if (ui && !ship.reskinned) { ship.reskinned = true; ship.reskin(c); } });
+    ui.scanTimeout = setTimeout(() => { if (ui && !ui.scanPlayed) { ui.scanPlayed = true; ui.q(".st-scan").hidden = true; startIntro(8.5); } }, 15000);
+    ui.shimmer = setInterval(starShimmer, 1400);
     ui.groundP.then((gcv) => {
       if (!ui) return;
       const o = ui.q(".lv-origin"), og = o.getContext("2d");
@@ -901,7 +929,8 @@
       og.save(); ringPath(og, ship, o.width / W); og.strokeStyle = "#7dfcff"; og.lineWidth = 3; og.stroke(); og.restore();
       o.classList.add("on");
     });
-    q(".lv-replay").addEventListener("click", startIntro);
+    q(".lv-replay").addEventListener("click", () => startIntro(8.5));
+    { const sc = q(".st-scan"); sc.hidden = false; const g0 = sc.getContext("2d"); sc.width = 10; sc.height = 10; g0.fillStyle = "#03050c"; g0.fillRect(0, 0, 10, 10); }
     ui.specOverlay = true;
     st.floor = floor;
     if (window.SpaceshipCompose) SpaceshipCompose.analyze(st, renderSpec);
@@ -910,6 +939,10 @@
   function unmount() {
     cancelAnimationFrame(raf);
     if (ui && ui.clock) clearInterval(ui.clock);
+    if (ui && ui.shimmer) clearInterval(ui.shimmer);
+    if (ui && ui.scanTimeout) clearTimeout(ui.scanTimeout);
+    if (ui && ui.scanCtl) ui.scanCtl.stop();
+    if (window.SpaceshipSound) SpaceshipSound.stop();
     if (ui && ui.onResize) window.removeEventListener("resize", ui.onResize);
     ui = null;
   }
