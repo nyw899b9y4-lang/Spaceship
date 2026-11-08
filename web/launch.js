@@ -159,6 +159,63 @@
         return true;
       } catch (_) { return false; }   // satellite image not readable (no CORS) → keep the plain hull
     };
+    // ---- modules from the 200 m composition (solar sails, shield pods, bio-domes, coolant, maglev)
+    let base = null;
+    const xsAll = [...mask].map((k) => +k.split(",")[0]), hullMinX = Math.min(...xsAll), hullMaxX = Math.max(...xsAll), HL = hullMaxX - hullMinX;
+    const topAt = (x) => { for (let y = gy0; y <= gy1; y++) if (has(x, y)) return y; return null; };
+    const botAt = (x) => { for (let y = gy1; y >= gy0; y--) if (has(x, y)) return y; return null; };
+    const spanOf = (a, b, f) => { const v = []; for (let x = a; x <= b; x++) { const r = f(x); if (r != null) v.push(r); } return v; };
+    const decorate = (res) => {
+      if (!base) { base = document.createElement("canvas"); base.width = W; base.height = H; base.getContext("2d").drawImage(cv, 0, 0); }
+      g.clearRect(0, 0, W, H); g.drawImage(base, 0, 0);
+      const st = res.stats, caps = new Set(res.capabilities.map((c) => c.id));
+      if (caps.has("solar")) {                                            // solar sails = wings above and below
+        const x0 = Math.round(hullMinX + HL * 0.36), w = Math.max(10, Math.round(HL * 0.22)), len = Math.min(16, 6 + Math.round(st.energy / 9));
+        [-1, 1].forEach((dir) => {
+          const edges = spanOf(x0, x0 + w, dir < 0 ? topAt : botAt); if (!edges.length) return;
+          const ye = dir < 0 ? Math.min(...edges) : Math.max(...edges);
+          for (let k = 1; k <= 2; k++) { put(x0 + Math.round(w / 2), ye + dir * k, PAL.metal); put(x0 + Math.round(w / 2) + 1, ye + dir * k, PAL.metalDark); }
+          for (let yy = 3; yy < 3 + len; yy++) for (let xx = 0; xx < w; xx++) {
+            const edge = xx === 0 || xx === w - 1 || yy === 3 || yy === 2 + len, grid = xx % 4 === 0 || yy % 3 === 0;
+            put(x0 + xx, ye + dir * yy, edge ? PAL.metalDark : grid ? "#2a4a9c" : (xx + yy) % 7 === 0 ? PAL.glassHi : PAL.glass);
+          }
+        });
+      }
+      const pods = st.shield >= 70 ? 2 : st.shield >= 45 ? 1 : 0;           // shield pods
+      for (let i = 0; i < pods; i++) {
+        const px = Math.round(hullMinX + HL * (i === 0 ? 0.14 : 0.74));
+        [-1, 1].forEach((dir) => {
+          const ye = dir < 0 ? topAt(px + 3) : botAt(px + 3); if (ye == null) return;
+          put(px + 3, ye + dir, PAL.metal); put(px + 3, ye + dir * 2, PAL.metal);
+          for (let yy = 3; yy <= 6; yy++) for (let xx = 0; xx < 8; xx++) {
+            if ((xx === 0 || xx === 7) && (yy === 3 || yy === 6)) continue;
+            put(px + xx, ye + dir * yy, yy === 3 || yy === 6 || xx === 0 || xx === 7 ? PAL.outline : yy === (dir < 0 ? 4 : 5) ? PAL.metalLight : "#7dfcff");
+          }
+        });
+      }
+      if (caps.has("bio_dome")) {                                          // green bio-domes on the hull
+        const n = st.lifeSupport >= 70 ? 3 : st.lifeSupport >= 45 ? 2 : 1;
+        for (let i = 0; i < n; i++) {
+          const cx = Math.round(hullMinX + HL * (0.2 + 0.17 * i)), top = topAt(cx); if (top == null) continue;
+          const cy = top + 5;
+          for (let dy = -3; dy <= 3; dy++) for (let dx = -4; dx <= 4; dx++)
+            if ((dx * dx) / 16 + (dy * dy) / 9 <= 1 && has(cx + dx, cy + dy) && has(cx + dx, cy + dy - 1))
+              put(cx + dx, cy + dy, (dx * dx) / 16 + (dy * dy) / 9 > 0.7 ? "#1f5e2a" : dx < 0 && dy < 0 ? "#c9ffb0" : dy > 0 ? "#2f8f3a" : "#5fd068");
+        }
+      }
+      if (caps.has("hydro")) {                                             // coolant tanks along the bottom
+        for (let x = Math.round(hullMinX + HL * 0.3); x <= Math.round(hullMinX + HL * 0.62); x++) {
+          const b = botAt(x); if (b == null || !has(x, b - 4)) continue;
+          put(x, b - 3, "#2f6fe0"); put(x, b - 4, x % 3 === 0 ? "#9cc4ff" : "#4b8cff");
+        }
+      }
+      if (caps.has("maglev")) {                                            // maglev rails under the hull
+        for (let x = Math.round(hullMinX + HL * 0.08); x <= Math.round(hullMinX + HL * 0.92); x++) {
+          const b = botAt(x); if (b == null) continue;
+          put(x, b + 2, x % 2 ? "#7dfcff" : "#36c9d8"); if (x % 6 === 0) put(x, b + 1, PAL.metal);
+        }
+      }
+    };
     // exact (unrounded) transforms between lat/lon and ship pixels, used by the satellite intro
     const llToPx = (lat, lon) => {
       const [x, y] = rot(localXY(lat, lon, ref));
@@ -170,7 +227,7 @@
       return [ref[0] + (y / 6371008.8) * R2D, ref[1] + (x / (6371008.8 * Math.cos(ref[0] * D2R))) * R2D];
     };
     return { sprite: cv, ports, engines, theta, ringPx: poly, northUp: [Math.sin(theta), -Math.cos(theta)], gy0, gy1,
-             llToPx, pxToLL, scale, ref, reskin };
+             llToPx, pxToLL, scale, ref, reskin, decorate };
   }
 
   // ---------- take-off intro: satellite image → pixel hull → lift-off ----------
@@ -444,6 +501,71 @@
     ui.q("#ck-horizon").style.transform = `translateY(${tilt != null ? Math.max(-40, Math.min(40, tilt * 2.2)) : 0}%)`;
     ui.qa(".ck-win").forEach((b, k) => b.classList.toggle("on", k === i));
   }
+  // ---------- ship composition panel ----------
+  const STAT_LABELS = [["speed", "SPEED"], ["acceleration", "ACCEL"], ["turn", "TURN"], ["tilt", "TILT/ROLL"], ["hull", "HULL"],
+    ["shield", "SHIELD"], ["sensors", "SENSORS"], ["energy", "ENERGY"], ["stealth", "STEALTH"], ["lifeSupport", "LIFE SUPPORT"], ["trade", "TRADE"]];
+  const CLS_LABEL = { veg: "Greenery", water: "Water", roof: "Roofs", paved: "Streets & paved", shade: "Shade" };
+  function drawSpecMap(res) {
+    const el = ui && ui.root.querySelector(".sp-map canvas"); if (!el || !res.satImage) return;
+    const g = el.getContext("2d"), n = el.width, sc = n / res.satImage.width;
+    g.clearRect(0, 0, n, n); g.drawImage(res.satImage, 0, 0, n, n);
+    if (ui.specOverlay && res.overlay) g.drawImage(res.overlay, 0, 0, n, n);
+    const R = (SpaceshipCompose.RADIUS / res.metresPerPx) * sc, c = n / 2;
+    // outside the 200 m circle: dark
+    g.save(); g.beginPath(); g.rect(0, 0, n, n); g.arc(c, c, R, 0, 2 * Math.PI, true); g.fillStyle = "rgba(8,10,22,.78)"; g.fill(); g.restore();
+    g.strokeStyle = "#7dfcff"; g.lineWidth = 2; g.setLineDash([6, 4]); g.beginPath(); g.arc(c, c, R, 0, 2 * Math.PI); g.stroke(); g.setLineDash([]);
+    const toPx = (lat, lon) => { const [x, y] = localXY(lat, lon, [res.center.lat, res.center.lon]); return [c + (x / res.metresPerPx) * sc, c - (y / res.metresPerPx) * sc]; };
+    g.strokeStyle = "#ff6bd6"; g.lineWidth = 2.5; g.beginPath();
+    outlineRing(cur).forEach(([la, lo], i) => { const [x, y] = toPx(la, lo); i ? g.lineTo(x, y) : g.moveTo(x, y); }); g.closePath(); g.stroke();
+    cur.windows.forEach((w) => {
+      const [x, y] = toPx(w.lat, w.lon), az = w.capture && w.capture.camera_azimuth_deg != null ? w.capture.camera_azimuth_deg : w.wall_azimuth_deg;
+      if (az != null) { g.strokeStyle = "rgba(255,107,214,.8)"; g.lineWidth = 1.5; g.beginPath(); g.moveTo(x, y);
+        g.lineTo(x + Math.sin(az * D2R) * R * 0.9, y - Math.cos(az * D2R) * R * 0.9); g.stroke(); }
+      g.fillStyle = "#ff6bd6"; g.fillRect(x - 3, y - 3, 6, 6);
+    });
+    g.fillStyle = "#7dfcff"; g.font = "bold 14px ui-monospace,monospace"; g.textAlign = "center"; g.fillText("N", c, c - R - 6 < 12 ? 14 : c - R - 6);
+    g.font = "11px ui-monospace,monospace"; g.fillText("200 m", c + R * 0.72, c + R * 0.72 + 14);
+  }
+  function renderSpec(res) {
+    if (!ui) return;
+    const root = ui.root.querySelector("#lv-spec"); ui.spec = res;
+    const share = res.satellite && res.satellite.share, o = res.osm;
+    const bars = STAT_LABELS.map(([k, l]) => {
+      const v = res.stats[k], segs = Math.round(v / 5);
+      return `<div class="sp-bar"><span>${l}</span><i>${"▮".repeat(segs)}<em>${"▮".repeat(20 - segs)}</em></i><b>${v}</b></div>`;
+    }).join("");
+    const legend = share ? Object.keys(CLS_LABEL).map((k) => {
+      const c = SpaceshipCompose.CLASS[k];
+      return `<div><s style="background:rgb(${c.join(",")})"></s>${CLS_LABEL[k]} <b>${Math.round(share[k] * 100)}%</b></div>`;
+    }).join("") : "<div class='muted'>Satellite analysis…</div>";
+    const osmLine = o ? `${o.buildings} buildings${o.avgLevels ? ` (Ø ${o.avgLevels.toFixed(1)} floors)` : ""} · ${o.roads + o.majorRoads} roads${o.majorRoads ? ` (${o.majorRoads} main)` : ""}` +
+      `${o.tram ? " · tram" : ""}${o.rail ? " · rail" : ""}${o.water ? " · water" : ""} · ${o.parks + o.green} green areas · ${o.trees} trees · ${o.shops + o.food} shops/cafés · ${o.amenities} facilities`
+      : res.status.osm === "failed" ? "OpenStreetMap not reachable – using estimates" : "Loading OpenStreetMap data… (up to ~40 s)";
+    const p = res.physics, geo = res.geometry;
+    root.innerHTML = `<div class="sp-head"><b>SHIP COMPOSITION</b><span>200 M SCAN · ${geo.area.toFixed(0)} M² HULL · ${geo.levels} DECKS</span></div>
+      <div class="sp-top">
+        <div class="sp-map"><canvas width="360" height="360"></canvas><button type="button" class="sp-toggle">${ui.specOverlay ? "◐ PHOTO" : "◑ ANALYSIS"}</button></div>
+        <div class="sp-right"><div class="sp-legend">${legend}</div><div class="sp-osm">${osmLine}</div>
+          <div class="sp-phys"><span>MAX SPEED <b>${p.max_speed}</b></span><span>TURN <b>${p.turn_rate_deg_s}°/s</b></span>
+          <span>PITCH <b>${p.pitch_rate_deg_s}°/s</b></span><span>ROLL <b>${p.roll_rate_deg_s}°/s</b></span>
+          <span>MAX TILT <b>${p.max_tilt_deg}°</b></span><span>ENGINES <b>${p.engines}</b></span>
+          <span>MASS <b>${p.mass_t.toLocaleString()} t</b></span><span>SENSOR RANGE <b>${p.sensor_range} m</b></span></div></div>
+      </div>
+      <div class="sp-stats">${bars}</div>
+      <div class="sp-caps">${res.capabilities.map((c) => `<span title="${c.desc}">◆ ${c.name}<small>${c.desc}</small></span>`).join("") || "<span>No special capabilities yet</span>"}</div>
+      <div class="sp-foot"><button type="button" class="sp-dl">⬇ Ship spec (JSON)</button>
+        <small>Sources: ${res.status.satellite === "ok" ? "satellite ✓" : "satellite …"} · ${res.status.osm === "ok" ? "OpenStreetMap ✓" : res.status.osm === "failed" ? "OpenStreetMap ✗" : "OpenStreetMap …"}</small></div>`;
+    root.querySelector(".sp-toggle").addEventListener("click", () => { ui.specOverlay = !ui.specOverlay; renderSpec(ui.spec); });
+    root.querySelector(".sp-dl").addEventListener("click", () => {
+      const blob = new Blob([SpaceshipCompose.specJSON(ui.spec, cur)], { type: "application/json" });
+      const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
+      a.download = "spaceship-" + (cur.address.label || "ship").split(/\s\d{4}/)[0].replace(/[^\w]+/g, "-").toLowerCase() + ".json"; a.click();
+    });
+    drawSpecMap(res);
+    // modules on the pixel ship (after the roof skin is in place)
+    (ui.groundP || Promise.resolve()).then(() => { if (ui && ship) ship.decorate(res); });
+  }
+
   // ---------- real sky in the window ----------
   function skyTime() { return new Date(Date.now() + (ui ? ui.timeOffsetH : 0) * 3600000); }
   function viewOf(w) {
@@ -600,6 +722,8 @@
           <div class="lv-hud lv-bl">${name.slice(0, 26)}</div>
           <div class="lv-hud lv-br">PORTS ${st.windows.length}</div>
         </div>
+        <div class="lv-spec" id="lv-spec"><div class="sp-head"><b>SHIP COMPOSITION</b><span>200 M SCAN</span></div>
+          <div class="sp-status">Scanning the surroundings…</div></div>
         <div class="lv-cockpit">
           <div class="ck-view" id="ck-view"></div>
           <div class="ck-horizon" id="ck-horizon"></div>
@@ -668,6 +792,9 @@
       o.classList.add("on");
     });
     q(".lv-replay").addEventListener("click", startIntro);
+    ui.specOverlay = true;
+    st.floor = floor;
+    if (window.SpaceshipCompose) SpaceshipCompose.analyze(st, renderSpec);
     t0 = performance.now(); cancelAnimationFrame(raf); raf = requestAnimationFrame(frame);
   }
   function unmount() {

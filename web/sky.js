@@ -117,12 +117,16 @@
     const g = canvas.getContext("2d"), W = canvas.width, H = canvas.height;
     g.clearRect(0, 0, W, H);
     if (!img || !img.naturalWidth) return null;
-    // fit photo like object-fit: contain (window frame stays fully visible)
-    const s = Math.min(W / img.naturalWidth, H / img.naturalHeight);
-    const pw = img.naturalWidth * s, ph = img.naturalHeight * s, ox = (W - pw) / 2, oy = (H - ph) / 2;
-    // ambient fill
-    g.save(); g.filter = "blur(18px) brightness(.45)"; const as = Math.max(W / img.naturalWidth, H / img.naturalHeight) * 1.15;
-    g.drawImage(img, (W - img.naturalWidth * as) / 2, (H - img.naturalHeight * as) / 2, img.naturalWidth * as, img.naturalHeight * as); g.restore();
+    const space = view.mode !== "photo" && catalog;
+    // photo mode: whole photo (contain). Space mode: the photo is an inset and the real sky
+    // continues around it at the same angular scale – a much bigger "heavens screen".
+    const s = space ? Math.min((W * 0.36) / img.naturalWidth, (H * 0.62) / img.naturalHeight)
+                    : Math.min(W / img.naturalWidth, H / img.naturalHeight);
+    const pw = img.naturalWidth * s, ph = img.naturalHeight * s, ox = (W - pw) / 2, oy = space ? (H - ph) * 0.42 : (H - ph) / 2;
+    if (!space) {   // ambient fill
+      g.save(); g.filter = "blur(18px) brightness(.45)"; const as = Math.max(W / img.naturalWidth, H / img.naturalHeight) * 1.15;
+      g.drawImage(img, (W - img.naturalWidth * as) / 2, (H - img.naturalHeight * as) / 2, img.naturalWidth * as, img.naturalHeight * as); g.restore();
+    }
     const portrait = img.naturalHeight >= img.naturalWidth;
     const hfov = portrait ? 53 : 67, vfov = portrait ? 67 : 53;      // phone main camera (~26 mm equiv.)
     const sun = bodies(view.time, view.lat, view.lon).find((b) => b.name === "Sun");
@@ -134,14 +138,14 @@
     // 2) sky layer
     const sky = document.createElement("canvas"); sky.width = W; sky.height = H;
     const k = sky.getContext("2d");
-    const grad = k.createLinearGradient(0, oy, 0, oy + ph);
+    const grad = k.createLinearGradient(0, 0, 0, H);
     grad.addColorStop(0, "#000106"); grad.addColorStop(0.7, "#060a22"); grad.addColorStop(1, "#141838");
     k.fillStyle = grad; k.fillRect(0, 0, W, H);
     const proj0 = camera(view.az, view.el, hfov, vfov, pw, ph), proj = (v) => { const p = proj0(v); return p && [p[0] + ox, p[1] + oy]; };
-    const lst = lstDeg(view.time, view.lon), inside = (p, m = 0) => p && p[0] > ox - m && p[0] < ox + pw + m && p[1] > oy - m && p[1] < oy + ph + m;
-    const scale = Math.max(0.8, pw / 600), place = placer();
+    const lst = lstDeg(view.time, view.lon), inside = (p, m = 0) => p && p[0] > -m && p[0] < W + m && p[1] > -m && p[1] < H + m;
+    const scale = Math.max(0.9, H / 520), place = placer();
     // constellation lines + names
-    k.lineWidth = 1 * scale; k.strokeStyle = "rgba(125,252,255,.28)";
+    k.lineWidth = 1.2 * scale; k.strokeStyle = "rgba(125,252,255,.38)";
     catalog.cons.forEach((c) => {
       c.l.forEach((seg) => {
         k.beginPath(); let started = false;
@@ -165,13 +169,14 @@
     catalog.stars.forEach(([ra, dec, mag, bv, name, desig, con, hip]) => {
       const sv = horizVec(ra, dec, view.lat, lst), p = proj(sv);
       if (!inside(p) || altOf(sv) < -1) return;           // below the horizon: hidden by the Earth
-      const r = Math.max(0.9, (7 - mag) * 0.72) * scale, col = bvColor(bv);
-      if (mag < 3.5) {                                     // soft halo
-        const halo = k.createRadialGradient(p[0], p[1], 0, p[0], p[1], r * 4);
-        halo.addColorStop(0, col.replace("rgb", "rgba").replace(")", ",.55)")); halo.addColorStop(1, "rgba(0,0,0,0)");
-        k.fillStyle = halo; k.beginPath(); k.arc(p[0], p[1], r * 4, 0, 2 * Math.PI); k.fill();
+      const r = Math.max(1.2, (7.4 - mag) * 0.9) * scale, col = bvColor(bv);
+      if (mag < 5) {                                       // soft halo on every visible star
+        const hr = r * (mag < 2 ? 5 : mag < 3.5 ? 3.2 : 2.1);
+        const halo = k.createRadialGradient(p[0], p[1], 0, p[0], p[1], hr);
+        halo.addColorStop(0, col.replace("rgb", "rgba").replace(")", mag < 2.5 ? ",.7)" : mag < 3.5 ? ",.45)" : ",.28)")); halo.addColorStop(1, "rgba(0,0,0,0)");
+        k.fillStyle = halo; k.beginPath(); k.arc(p[0], p[1], hr, 0, 2 * Math.PI); k.fill();
       }
-      if (mag < 1.5) {                                     // diffraction spikes
+      if (mag < 2.5) {                                     // diffraction spikes
         k.strokeStyle = col.replace("rgb", "rgba").replace(")", ",.7)"); k.lineWidth = Math.max(1, scale * 0.8);
         const L = r * 5;
         k.beginPath(); k.moveTo(p[0] - L, p[1]); k.lineTo(p[0] + L, p[1]); k.moveTo(p[0], p[1] - L); k.lineTo(p[0], p[1] + L); k.stroke();
@@ -182,7 +187,7 @@
       const az = (Math.atan2(sv[0], sv[1]) * R2D + 360) % 360;
       objects.push({ type: "star", x: p[0], y: p[1], r, mag, bv, name, desig, con, conName: catalog.conName[con] || con, hip,
                      alt: altOf(sv), az, ra, dec });
-      if (name && mag < 1.8) {
+      if (name && mag < 2.3) {
         k.fillStyle = "rgba(255,255,255,.85)"; k.font = `${Math.round(11 * scale)}px -apple-system,sans-serif`; k.textAlign = "left";
         const y = place(p[0] + r + 4, p[1] + 4, name.length * 6.5 * scale, 12 * scale);
         k.fillText(name, p[0] + r + 4, y); info.inView.push({ type: "star", name, mag });
@@ -213,17 +218,38 @@
     });
     // 3) keep the sky only where the photo shows open sky
     const m = skyMask(img, img.naturalWidth, img.naturalHeight);
-    if (m) {
-      info.mask = m.coverage;
-      const mk = document.createElement("canvas"); mk.width = W; mk.height = H;
-      const mg = mk.getContext("2d"); mg.filter = `blur(${Math.max(1, pw / 300)}px)`; mg.drawImage(m.canvas, ox, oy, pw, ph);
-      k.globalCompositeOperation = "destination-in"; k.drawImage(mk, 0, 0);
-      info.visibleAt = (x, y) => { try { return mg.getImageData(Math.round(x), Math.round(y), 1, 1).data[3] > 60; } catch (_) { return true; } };
-    } else {
-      info.visibleAt = (x, y) => y < oy + ph * 0.6;
-      k.globalCompositeOperation = "destination-in"; k.fillStyle = "#000"; k.fillRect(ox, oy, pw, ph * 0.6);
-    }
+    const mk = document.createElement("canvas"); mk.width = W; mk.height = H;
+    const mg = mk.getContext("2d");
+    mg.fillStyle = "#fff"; mg.fillRect(0, 0, W, H); mg.clearRect(ox, oy, pw, ph);          // open sky around the photo
+    if (m) { info.mask = m.coverage; mg.save(); mg.filter = `blur(${Math.max(1, pw / 300)}px)`; mg.drawImage(m.canvas, ox, oy, pw, ph); mg.restore(); }
+    else { mg.fillRect(ox, oy, pw, ph * 0.6); }
+    k.globalCompositeOperation = "destination-in"; k.drawImage(mk, 0, 0); k.globalCompositeOperation = "source-over";
+    info.visibleAt = (x, y) => { try { return mg.getImageData(Math.round(x), Math.round(y), 1, 1).data[3] > 60; } catch (_) { return true; } };
     g.drawImage(sky, 0, 0);
+    // horizon and ground around the photo (below altitude 0)
+    const hz = [];
+    for (let a = -100; a <= 100; a += 4) { const p = proj(vecAzAlt(view.az + a, 0)); if (p) hz.push(p); }
+    if (hz.length > 1) {
+      g.save(); g.beginPath(); g.rect(0, 0, W, H); g.rect(ox, oy, pw, ph); g.clip("evenodd");
+      g.beginPath(); g.moveTo(hz[0][0], hz[0][1]); hz.forEach((p) => g.lineTo(p[0], p[1]));
+      g.lineTo(hz[hz.length - 1][0], H + 10); g.lineTo(hz[0][0], H + 10); g.closePath();
+      const gy = Math.min(...hz.map((p) => p[1])), gg = g.createLinearGradient(0, gy, 0, H);
+      gg.addColorStop(0, "#1a2140"); gg.addColorStop(0.08, "#0b0f1f"); gg.addColorStop(1, "#04060c");
+      g.fillStyle = gg; g.fill();
+      g.beginPath(); g.moveTo(hz[0][0], hz[0][1]); hz.forEach((p) => g.lineTo(p[0], p[1]));
+      g.strokeStyle = "rgba(125,252,255,.55)"; g.lineWidth = 1.5 * scale; g.shadowColor = "#7dfcff"; g.shadowBlur = 12 * scale; g.stroke();
+      g.restore();
+      // compass labels along the horizon
+      g.save(); g.fillStyle = "rgba(125,252,255,.7)"; g.font = `700 ${Math.round(11 * scale)}px ui-monospace,monospace`; g.textAlign = "center";
+      ["N", "NE", "E", "SE", "S", "SW", "W", "NW"].forEach((n, i) => {
+        const p = proj(vecAzAlt(i * 45, 0)); if (p && p[0] > 10 && p[0] < W - 10 && !(p[0] > ox && p[0] < ox + pw && p[1] > oy && p[1] < oy + ph)) g.fillText(n, p[0], p[1] + 16 * scale);
+      });
+      g.restore();
+    }
+    // the window photo as a glowing porthole
+    g.save(); g.strokeStyle = "rgba(255,107,214,.75)"; g.lineWidth = 2 * scale; g.shadowColor = "#ff6bd6"; g.shadowBlur = 16 * scale;
+    g.strokeRect(ox, oy, pw, ph); g.restore();
+    info.photoRect = [ox, oy, pw, ph];
     return info;
   }
 

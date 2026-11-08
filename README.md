@@ -22,3 +22,11 @@ Turn an apartment into a spaceship: its real outline, its windows, and the view 
 ## Real sky
 
 In the cockpit (★ SPACE) the open sky in each window photo is replaced by the real sky in that direction: ~5000 stars to magnitude 6 with constellations (d3-celestial data, BSD-3), Sun, Moon and planets (astronomy-engine, MIT), for the building's position and the chosen time (slider ±12 h). View direction = phone compass at the shot (fallback: wall direction), tilt = phone tilt, field of view ≈ phone main camera (53° × 67° portrait).
+
+## Ship composition (200 m scan)
+
+`web/compose.js` turns the surroundings into ship parameters (spec v1, downloadable as JSON in the page):
+- Satellite classification within 200 m (greenery, water, roofs, streets & paved, shade) + OpenStreetMap counts (buildings & floors, roads, tram/rail, water, parks, trees, shops, facilities) + the building's own geometry and windows.
+- `stats` (0–99): speed, acceleration, turn, tilt, hull, shield, sensors, energy, stealth, lifeSupport, trade.
+- `physics`: engines, mass_t, max_speed, acceleration, turn_rate_deg_s, pitch_rate_deg_s, roll_rate_deg_s, max_tilt_deg, shield_regen_per_s, sensor_range.
+- `capabilities`: bio_dome, hydro, maglev, solar, cloak, panorama, high_orbit, trade_port, academy, sanctuary, arterial – also shown as modules on the pixel ship.
