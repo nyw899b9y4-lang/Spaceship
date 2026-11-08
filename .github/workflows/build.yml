@@ -26,9 +26,13 @@ jobs:
           "$SDKM" "platforms;android-37" || true
 
       - uses: gradle/actions/setup-gradle@v5
+        with:
+          gradle-version: current
 
       - name: Build APK
-        run: ./gradlew --no-daemon assembleDebug
+        run: |
+          gradle --version
+          gradle --no-daemon assembleDebug
 
       - name: Rename APK
         run: cp app/build/outputs/apk/debug/app-debug.apk HelloWorld.apk
