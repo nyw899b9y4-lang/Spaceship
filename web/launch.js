@@ -127,7 +127,156 @@
     ports.forEach((p) => {
       if (p.dir) for (let s = 1; s <= 4; s++) put(Math.round(p.x + p.dir[0] * s), Math.round(p.y + p.dir[1] * s), s === 4 ? PAL.metalLight : PAL.metal);
     });
-    return { sprite: cv, ports, engines, theta, ringPx: poly, northUp: [Math.sin(theta), -Math.cos(theta)], gy0, gy1 };
+    // exact (unrounded) transforms between lat/lon and ship pixels, used by the satellite intro
+    const llToPx = (lat, lon) => {
+      const [x, y] = rot(localXY(lat, lon, ref));
+      return [W / 2 - 6 + (x - cx) * scale, H / 2 - (y - cy) * scale];
+    };
+    const pxToLL = (px, py) => {
+      const xr = (px - (W / 2 - 6)) / scale + cx, yr = -(py - H / 2) / scale + cy;
+      const x = xr * Math.cos(theta) - yr * Math.sin(theta), y = xr * Math.sin(theta) + yr * Math.cos(theta);
+      return [ref[0] + (y / 6371008.8) * R2D, ref[1] + (x / (6371008.8 * Math.cos(ref[0] * D2R))) * R2D];
+    };
+    return { sprite: cv, ports, engines, theta, ringPx: poly, northUp: [Math.sin(theta), -Math.cos(theta)], gy0, gy1,
+             llToPx, pxToLL, scale, ref };
+  }
+
+  // ---------- take-off intro: satellite image → pixel hull → lift-off ----------
+  const K = 4;                                   // hi-res factor of the intro canvas (one ship pixel = 4×4)
+  let intro = null;
+  function inCH(lat, lon) { return lat > 45.8 && lat < 47.9 && lon > 5.9 && lon < 10.6; }
+  function tileUrl(z, x, y, ch) {
+    return ch ? `https://wmts.geo.admin.ch/1.0.0/ch.swisstopo.swissimage/default/current/3857/${z}/${x}/${y}.jpeg`
+              : `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}`;
+  }
+  const lon2g = (lon, z) => ((lon + 180) / 360) * 256 * 2 ** z;
+  const lat2g = (lat, z) => { const r = lat * D2R; return ((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2) * 256 * 2 ** z; };
+  const g2lon = (x, z) => (x / (256 * 2 ** z)) * 360 - 180;
+  const g2lat = (y, z) => { const n = Math.PI - (2 * Math.PI * y) / (256 * 2 ** z); return R2D * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n))); };
+  // render the real satellite image, rotated/scaled exactly like the ship, into a hi-res canvas
+  function buildGround(st, sh) {
+    const cv = document.createElement("canvas"); cv.width = W * K; cv.height = H * K;
+    const g = cv.getContext("2d"); g.fillStyle = "#1a1f1a"; g.fillRect(0, 0, cv.width, cv.height);
+    const lat0 = st.address.lat, ch = inCH(lat0, st.address.lon);
+    const viewM = W / sh.scale, tileM = (40075016 * Math.cos(lat0 * D2R)) / 2 ** 19;
+    const z = Math.max(15, Math.min(ch ? 20 : 19, Math.round(19 + Math.log2(tileM / (viewM / 3)))));
+    const corners = [[0, 0], [W, 0], [0, H], [W, H]].map(([x, y]) => sh.pxToLL(x, y));
+    const gx = corners.map(([la, lo]) => lon2g(lo, z)), gy = corners.map(([la]) => lat2g(la, z));
+    const tx0 = Math.floor(Math.min(...gx) / 256), tx1 = Math.floor(Math.max(...gx) / 256);
+    const ty0 = Math.floor(Math.min(...gy) / 256), ty1 = Math.floor(Math.max(...gy) / 256);
+    const jobs = [];
+    for (let tx = tx0; tx <= tx1; tx++) for (let ty = ty0; ty <= ty1; ty++) {
+      jobs.push(new Promise((resolve) => {
+        const img = new Image(); img.crossOrigin = "anonymous";
+        img.onload = () => {
+          const P = (gxp, gyp) => sh.llToPx(g2lat(gyp, z), g2lon(gxp, z)).map((v) => v * K);
+          const nw = P(tx * 256, ty * 256), ne = P(tx * 256 + 256, ty * 256), sw = P(tx * 256, ty * 256 + 256);
+          g.save();
+          g.setTransform((ne[0] - nw[0]) / 256, (ne[1] - nw[1]) / 256, (sw[0] - nw[0]) / 256, (sw[1] - nw[1]) / 256, nw[0], nw[1]);
+          g.drawImage(img, -0.5, -0.5, 257, 257);   // tiny overlap hides tile seams
+          g.restore(); resolve(true);
+        };
+        img.onerror = () => resolve(false);
+        img.src = tileUrl(z, tx, ty, ch);
+      }));
+    }
+    const timeout = new Promise((r) => setTimeout(() => r("timeout"), 4000));
+    return Promise.race([Promise.all(jobs), timeout]).then(() => cv);
+  }
+  function ringPath(g, sh, k) {
+    g.beginPath();
+    const ring = outlineRing(cur);
+    ring.forEach(([la, lo], i) => { const [x, y] = sh.llToPx(la, lo); i ? g.lineTo(x * k, y * k) : g.moveTo(x * k, y * k); });
+    g.closePath();
+  }
+  const ease = (x) => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x));
+  const seg = (t, a, b) => ease((t - a) / (b - a));
+  function startIntro() {
+    if (!ui) return;
+    const cv = ui.q(".lv-intro"); cv.hidden = false; cv.style.opacity = 1;
+    ui.q(".lv-caption").hidden = false; ui.q(".lv-caption").textContent = "SCANNING…";
+    intro = { t0: null, ground: null, ready: false, cv, g: cv.getContext("2d"),
+              tmp: document.createElement("canvas"), silhouette: null };
+    // silhouette of the hull for the lift-off shadow
+    const sil = document.createElement("canvas"); sil.width = W; sil.height = H;
+    const sg = sil.getContext("2d"); sg.drawImage(ship.sprite, 0, 0); sg.globalCompositeOperation = "source-in";
+    sg.fillStyle = "#000"; sg.fillRect(0, 0, W, H); intro.silhouette = sil;
+    buildGround(cur, ship).then((c) => { if (intro) { intro.ground = c; intro.ready = true; } });
+  }
+  function drawIntro(ts) {
+    const it = intro; if (!it || !it.ready) return;
+    if (it.t0 == null) it.t0 = ts;
+    const t = (ts - it.t0) / 1000, g = it.g, CW = W * K, CH = H * K;
+    g.imageSmoothingEnabled = false;
+    const cap = ui.q(".lv-caption");
+    // phase A (0–1.6 s): satellite image, outline glows
+    // phase B (1.6–3.4 s): pixelation 1→K, surroundings fade to space, hull wipes in rear→nose
+    // phase C (3.4–4.3 s): ports, canopy and engines power up
+    // phase D (4.3–6.0 s): lift-off – shadow separates, ground falls away
+    const pix = seg(t, 1.6, 2.6), dark = seg(t, 1.9, 3.0), wipe = seg(t, 2.4, 3.4), lift = seg(t, 4.3, 5.6), out = seg(t, 5.5, 6.0);
+    const block = Math.max(1, Math.round(1 + pix * (K - 1)));
+    // ground (pixelated progressively)
+    const tw = Math.ceil(CW / block), th = Math.ceil(CH / block);
+    it.tmp.width = tw; it.tmp.height = th;
+    const tg = it.tmp.getContext("2d"); tg.imageSmoothingEnabled = true; tg.drawImage(it.ground, 0, 0, tw, th);
+    const groundScale = 1;
+    g.fillStyle = PAL.space; g.fillRect(0, 0, CW, CH);
+    g.save(); g.globalAlpha = 1 - seg(t, 4.3, 5.0);           // the ground falls away below the climbing ship
+    g.translate(CW / 2, CH / 2); g.scale(groundScale, groundScale); g.translate(-CW / 2, -CH / 2);
+    g.drawImage(it.tmp, 0, 0, tw, th, 0, 0, CW, CH);
+    // surroundings fade into space (building stays lit)
+    g.save(); ringPath(g, ship, K); g.rect(CW, 0, -CW, CH); g.clip("evenodd");
+    g.fillStyle = `rgba(20,17,39,${0.92 * dark})`; g.fillRect(0, 0, CW, CH); g.restore();
+    g.restore();
+    // stars appear in the dark
+    if (dark > 0) {
+      g.fillStyle = `rgba(255,255,255,${dark})`;
+      stars.forEach((st) => g.fillRect(Math.round(st.x) * K, Math.round(st.y) * K, K, K));
+    }
+    // glowing outline (phase A/B)
+    const glow = (1 - wipe) * (0.6 + 0.4 * Math.sin(t * 9));
+    if (glow > 0.02) {
+      g.save(); g.globalAlpha = glow; ringPath(g, ship, K);
+      g.strokeStyle = "#7dfcff"; g.lineWidth = K; g.setLineDash([3 * K, 2 * K]); g.lineDashOffset = -t * 40; g.stroke(); g.restore();
+    }
+    // hull: wipes in from the rear (left) to the nose (right)
+    const sc = 1 + Math.sin(lift * Math.PI) * 0.14 + lift * 0.02;
+    const shadowOff = lift * 10 * K;
+    if (wipe > 0) {
+      const xs = ship.ringPx.map((p) => p[0]), x0 = Math.min(...xs) - 6, x1 = Math.max(...xs) + 2;
+      const reveal = (x0 + (x1 - x0) * wipe) * K;
+      g.save();
+      g.translate(CW / 2, CH / 2); g.scale(sc, sc); g.translate(-CW / 2, -CH / 2);
+      if (lift > 0) { g.globalAlpha = 0.45 * (1 - out); g.drawImage(it.silhouette, shadowOff, shadowOff * 0.8, CW, CH); g.globalAlpha = 1; }
+      g.beginPath(); g.rect(0, 0, reveal, CH); g.clip();
+      g.drawImage(ship.sprite, 0, 0, CW, CH);
+      // scan line at the wipe front
+      if (wipe < 1) { g.fillStyle = "rgba(125,252,255,.85)"; g.fillRect(reveal - K, 0, K, CH); }
+      g.restore();
+    }
+    // systems on: ports one by one, engines
+    const sys = seg(t, 3.4, 4.3);
+    if (sys > 0) {
+      g.save(); g.translate(CW / 2, CH / 2); g.scale(sc, sc); g.translate(-CW / 2, -CH / 2);
+      const n = ship.ports.length;
+      ship.ports.forEach((p, i) => {
+        if (sys < (i + 1) / (n + 1)) return;
+        g.fillStyle = "rgba(255,107,214,.4)"; g.fillRect((p.x - 3) * K, (p.y - 3) * K, 7 * K, 7 * K);
+        g.fillStyle = PAL.port; g.fillRect((p.x - 1) * K, (p.y - 1) * K, 3 * K, 3 * K);
+      });
+      if (sys > 0.6) ship.engines.forEach(([ex, ey], k) => {
+        const L = 2 + Math.round((Math.sin(t * 22 + k) + 1) * 2 + lift * 4);
+        for (let i = 0; i < L; i++) { g.fillStyle = i < 2 ? PAL.flame1 : PAL.flame2; g.fillRect((ex - i) * K, ey * K, K, K); }
+      });
+      g.restore();
+    }
+    // captions
+    const name = (cur.address.label || "").split(/\s\d{4}\s/)[0].toUpperCase();
+    cap.textContent = t < 1.6 ? `TARGET: ${name}` : t < 3.4 ? "CONVERTING STRUCTURE…" : t < 4.3 ? "SYSTEMS ONLINE" : "LIFT-OFF";
+    cap.classList.toggle("go", t >= 4.3);
+    // hand over to the flight view
+    if (out > 0) it.cv.style.opacity = String(1 - out);
+    if (t >= 6.0) { it.cv.hidden = true; cap.hidden = true; intro = null; }
   }
 
   // ---------- pixel view animation ----------
@@ -176,6 +325,7 @@
     });
     // radar in cockpit
     drawRadar(t);
+    if (intro) drawIntro(ts);
     raf = requestAnimationFrame(frame);
   }
 
@@ -252,7 +402,11 @@
     root.innerHTML = `
       <div class="lv-grid">
         <div class="lv-pixel">
-          <canvas width="${W}" height="${H}"></canvas>
+          <canvas class="lv-main" width="${W}" height="${H}"></canvas>
+          <canvas class="lv-intro" width="${W * K}" height="${H * K}" hidden></canvas>
+          <div class="lv-caption" hidden></div>
+          <canvas class="lv-origin" width="${W * 2}" height="${H * 2}" title="Origin: your building from above"></canvas>
+          <button class="lv-replay" type="button">↺ Replay take-off</button>
           <div class="lv-hud lv-tl">${String(Math.round(st.windows.length * 1000 + floor * 137 + 4242)).padStart(5, "0")}</div>
           <div class="lv-hud lv-tr">DECK ${floor}</div>
           <div class="lv-hud lv-bl">${name.slice(0, 26)}</div>
@@ -284,7 +438,7 @@
         </div>
       </div>`;
     const q = (s) => root.querySelector(s), qa = (s) => root.querySelectorAll(s);
-    const cvs = root.querySelector(".lv-pixel canvas"), ctx = cvs.getContext("2d");
+    const cvs = root.querySelector(".lv-main"), ctx = cvs.getContext("2d");
     ctx.imageSmoothingEnabled = false;
     ui = { root, q, qa, ctx, view: q("#ck-view"), radar: q(".ck-radar") }; cur = st;
     const wins = q(".ck-wins");
@@ -303,6 +457,16 @@
     tick(); ui.clock = setInterval(tick, 10000);
     ship = buildShip(st); initStars(); lasers = []; active = 0;
     selectWindow(0, st);
+    // origin inset: the real building from above with its outline – stays visible during flight
+    buildGround(st, ship).then((gcv) => {
+      if (!ui) return;
+      const o = ui.q(".lv-origin"), og = o.getContext("2d");
+      og.drawImage(gcv, 0, 0, o.width, o.height);
+      og.save(); ringPath(og, ship, o.width / W); og.strokeStyle = "#7dfcff"; og.lineWidth = 3; og.stroke(); og.restore();
+      o.classList.add("on");
+    });
+    q(".lv-replay").addEventListener("click", startIntro);
+    startIntro();
     t0 = performance.now(); cancelAnimationFrame(raf); raf = requestAnimationFrame(frame);
   }
   function unmount() { cancelAnimationFrame(raf); if (ui && ui.clock) clearInterval(ui.clock); ui = null; }

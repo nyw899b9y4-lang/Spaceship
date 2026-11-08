@@ -74,8 +74,19 @@
   .lv-grid { display: grid; grid-template-columns: 1fr; gap: 14px; }
   @media (min-width: 980px) { .lv-grid { grid-template-columns: 1fr 1.25fr; align-items: stretch; } }
   .lv-pixel { position: relative; border-radius: 14px; overflow: hidden; border: 1px solid var(--line); background: #141127; aspect-ratio: 8 / 5; }
-  .lv-pixel canvas { width: 100%; height: 100%; display: block; object-fit: contain; image-rendering: pixelated; image-rendering: crisp-edges; cursor: pointer; }
+  .lv-pixel canvas.lv-main { width: 100%; height: 100%; display: block; object-fit: contain; image-rendering: pixelated; image-rendering: crisp-edges; cursor: pointer; }
   @media (min-width: 980px) { .lv-pixel { aspect-ratio: auto; } }
+  .lv-intro { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; transition: opacity .2s; }
+  .lv-caption { position: absolute; left: 0; right: 0; top: 44px; text-align: center; color: #7dfcff; pointer-events: none;
+    font: 700 clamp(11px, 1.8vw, 16px)/1 ui-monospace, "Courier New", monospace; letter-spacing: .25em; text-shadow: 2px 2px 0 #000; }
+  .lv-caption.go { color: #ff6bd6; animation: blink .25s steps(2) infinite; }
+  @keyframes blink { 50% { opacity: .35; } }
+  .lv-origin { position: absolute; right: 12px; bottom: 38px; width: 22%; max-width: 150px; aspect-ratio: 8 / 5; border: 2px solid #7dfcff;
+    border-radius: 4px; opacity: 0; transition: opacity .6s; image-rendering: auto; box-shadow: 0 0 0 2px #000; pointer-events: none; }
+  .lv-origin.on { opacity: .9; }
+  .lv-origin::after { content: "ORIGIN"; }
+  .lv-replay { position: absolute; left: 12px; bottom: 32px; padding: 4px 8px; font: 700 11px ui-monospace, monospace; border-radius: 6px;
+    background: rgba(5,10,22,.7); color: #7dfcff; border: 1px solid rgba(125,252,255,.5); }
   .lv-hud { position: absolute; color: #fff; font: 700 clamp(12px, 2.4vw, 20px)/1 ui-monospace, "Courier New", monospace; letter-spacing: .08em;
     text-shadow: 2px 2px 0 #000; pointer-events: none; }
   .lv-tl { left: 12px; top: 10px; } .lv-tr { right: 12px; top: 10px; } .lv-bl { left: 12px; bottom: 10px; font-size: clamp(10px, 1.6vw, 13px); color: #c9c4ff; }
