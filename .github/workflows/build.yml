@@ -1,16 +1,16 @@
-name: Build & publish APK
+name: Android – build, run in emulator & publish
 
 on:
   push:
     branches: [main]
-    paths-ignore: ['ios/**', '.github/workflows/ios.yml']
+    paths-ignore: ['ios/**', '.github/workflows/ios.yml', 'README.md']
   workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  build:
+  android:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -30,21 +30,39 @@ jobs:
         run: |
           # Prefer the Gradle preinstalled on the runner; fall back to the wrapper (with retries)
           if command -v gradle >/dev/null && gradle --version | grep -qE "Gradle (9\.([6-9]|[1-9][0-9])|[1-9][0-9])"; then
-            gradle --version
+            gradle --version | grep Gradle
             gradle --no-daemon assembleDebug
           else
             for i in 1 2 3 4 5; do ./gradlew --no-daemon assembleDebug && exit 0; echo "retry $i"; sleep 30; done
             exit 1
           fi
+          cp app/build/outputs/apk/debug/app-debug.apk HelloWorld.apk
 
-      - name: Rename APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk HelloWorld.apk
+      - name: Enable KVM (hardware acceleration for the emulator)
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Run app in Android emulator and take a screenshot
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          disable-animations: true
+          script: |
+            adb install -r HelloWorld.apk
+            adb shell am start -W -n com.example.helloworld/.MainActivity
+            sleep 5
+            adb exec-out screencap -p > android-emulator-screenshot.png
+            adb shell pidof com.example.helloworld
 
       - name: Publish release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "v1.0.${{ github.run_number }}" HelloWorld.apk \
-            --title "Hello World v1.0.${{ github.run_number }}" \
-            --notes "Install on your phone: download HelloWorld.apk below and open it." \
+          gh release create "v1.1.${{ github.run_number }}" HelloWorld.apk android-emulator-screenshot.png \
+            --title "Hello World v1.1.${{ github.run_number }}" \
+            --notes "Install on your phone: download HelloWorld.apk below and open it. The screenshot shows the app running in the Android emulator on GitHub." \
             --latest
