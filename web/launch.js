@@ -233,7 +233,7 @@
       return [ref[0] + (y / 6371008.8) * R2D, ref[1] + (x / (6371008.8 * Math.cos(ref[0] * D2R))) * R2D];
     };
     return { sprite: cv, ports, engines, theta, ringPx: poly, northUp: [Math.sin(theta), -Math.cos(theta)], gy0, gy1,
-             llToPx, pxToLL, scale, ref, reskin, decorate };
+             llToPx, pxToLL, scale, ref, reskin, decorate, baseSprite: () => base || pristine };
   }
 
   // ---------- take-off intro: satellite image → pixel hull → lift-off ----------
@@ -294,7 +294,7 @@
   }
   const ease = (x) => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x));
   const seg = (t, a, b) => ease((t - a) / (b - a));
-  const WIDE = 8;                                  // the approach starts 8× wider than the ship view
+  const WIDE = 12;                                 // the approach starts 12× wider than the ship view
   function feather(src) {                          // soft edges so the detail image blends into the wide one
     const c = document.createElement("canvas"); c.width = src.width; c.height = src.height;
     const g = c.getContext("2d"); g.drawImage(src, 0, 0);
@@ -335,75 +335,172 @@
     g.translate(CW / 2, CH / 2); g.scale(s, s); g.translate(-CW / 2, -CH / 2);
     g.drawImage(img, 0, 0, CW, CH); g.restore();
   }
+  // geo-referenced north-up image (e.g. the classification overlay) drawn into the intro frame
+  function drawGeoImage(g, img, mpp, center, m, alpha) {
+    const n = img.width, toCv = (u, v) => {
+      const x = (u - n / 2) * mpp, y = -(v - n / 2) * mpp;
+      const lat = center.lat + (y / 6371008.8) * R2D, lon = center.lon + (x / (6371008.8 * Math.cos(center.lat * D2R))) * R2D;
+      const [px, py] = ship.llToPx(lat, lon);
+      return [(W / 2 + (px - W / 2) * m) * K, (H / 2 + (py - H / 2) * m) * K];
+    };
+    const o = toCv(0, 0), ex = toCv(n, 0), ey = toCv(0, n);
+    g.save(); g.globalAlpha = alpha;
+    g.setTransform((ex[0] - o[0]) / n, (ex[1] - o[1]) / n, (ey[0] - o[0]) / n, (ey[1] - o[1]) / n, o[0], o[1]);
+    g.drawImage(img, 0, 0); g.restore();
+  }
+  const CAT = [["veg", "GREENERY", "lifeSupport", "LIFE SUPPORT"], ["paved", "STREETS", "speed", "SPEED"], ["roof", "ROOFS", "energy", "ENERGY"],
+               ["shade", "SHADE", "stealth", "STEALTH"], ["water", "WATER", "lifeSupport", "COOLING"]];
+  function scanHud(t, res, phase, prog) {
+    const hud = ui.q(".lv-scanhud"); if (!hud) return;
+    hud.hidden = false;
+    const share = res && res.satellite && res.satellite.share, o = res && res.osm, st = res && res.stats;
+    let html = "";
+    if (phase === "scan") {
+      html += `<b>SURFACE SCAN · 200 M</b>`;
+      CAT.forEach(([k, label]) => {
+        const v = share ? Math.round(share[k] * 100 * prog) : 0, c = SpaceshipCompose.CLASS[k];
+        html += `<div><s style="background:rgb(${c.join(",")})"></s>${label}<em>${share ? v + "%" : "…"}</em></div>`;
+      });
+      html += `<b style="margin-top:6px">STRUCTURE SCAN · OSM</b>`;
+      if (o) {
+        const lines = [`${o.buildings} BUILDINGS`, `Ø ${o.avgLevels ? o.avgLevels.toFixed(1) : "?"} FLOORS`, `${o.roads + o.majorRoads} ROADS · ${o.majorRoads} MAIN`,
+          o.tram || o.rail ? `${[o.tram && "TRAM", o.rail && "RAIL"].filter(Boolean).join(" + ")} ✓` : "NO RAIL", `${o.trees} TREES · ${o.parks + o.green} GREEN AREAS`,
+          `${o.shops + o.food} SHOPS & CAFÉS`];
+        lines.slice(0, Math.max(1, Math.ceil(prog * lines.length))).forEach((l) => (html += `<div>${l}</div>`));
+      } else html += `<div class="dim">LINKING TO OPENSTREETMAP…</div>`;
+    } else if (phase === "compose") {
+      html += `<b>CALCULATING SHIP DNA</b>`;
+      const rows = [];
+      if (share) CAT.slice(0, 4).forEach(([k, label, sk, slabel]) => rows.push(`${label} ${Math.round(share[k] * 100)}% → ${slabel} ${st[sk]}`));
+      if (o) { rows.push(`${o.buildings} BUILDINGS → SHIELD ${st.shield}`); rows.push(`${o.roads + o.majorRoads} ROADS → ACCEL ${st.acceleration}`); }
+      const g0 = res.geometry;
+      rows.push(`${g0.windows} WINDOWS · ${Math.round(g0.spreadDeg)}° → SENSORS ${st.sensors}`);
+      rows.push(`${Math.round(g0.area)} M² × ${g0.levels} DECKS → HULL ${st.hull}`);
+      rows.slice(0, Math.max(1, Math.ceil(prog * rows.length))).forEach((r) => (html += `<div>${r}</div>`));
+    } else if (phase === "modules") {
+      html += `<b>FITTING MODULES</b>`;
+      const caps = res ? res.capabilities : [];
+      caps.slice(0, Math.max(0, Math.ceil(prog * caps.length))).forEach((c) => (html += `<div class="add">+ ${c.name.toUpperCase()}</div>`));
+      if (!caps.length) html += `<div class="dim">NO MODULES</div>`;
+    }
+    if (hud.innerHTML !== html) hud.innerHTML = html;
+  }
   function drawIntro(ts) {
     const it = intro; if (!it || !it.ready) return;
-    if (it.t0 == null) it.t0 = ts;
-    const t = (ts - it.t0) / 1000, g = it.g, CW = W * K, CH = H * K;
+    if (it.t0 == null) { it.t0 = ts; it.last = ts; }
+    let t = (ts - it.t0) / 1000;
+    const res = ui.spec, g = it.g, CW = W * K, CH = H * K;
+    // wait (max 5 s) at the start of the scan until the satellite classification is ready
+    if (t > 2 && t < 2.1 && !(res && res.overlay) && (it.waited || 0) < 5) { it.waited = (it.waited || 0) + (ts - it.last) / 1000; it.t0 += ts - it.last; t = (ts - it.t0) / 1000; }
+    it.last = ts;
     g.imageSmoothingEnabled = true;
     const cap = ui.q(".lv-caption");
-    // Timeline (s): 0–3.5 approach from 8× wider · 3.5–5 hover over the neighbourhood · 5–6.2 lock-on zoom
-    //   6.2–7.2 pixelate · 5.6–7.2 surroundings fade into space · 6.8–7.8 hull wipe · 7.8–8.8 systems
-    //   8.8–10.2 lift-off · 10.0–10.6 hand-over to the flight view
-    const a1 = seg(t, 0, 3.5), a2 = seg(t, 5, 6.2);
-    const m = Math.exp(Math.log(1 / WIDE) + (Math.log(0.5) - Math.log(1 / WIDE)) * a1) * Math.exp(Math.log(2) * a2);  // 1/8 → 1/2 → 1
-    const pix = seg(t, 6.2, 7.2), dark = seg(t, 5.6, 7.2), wipe = seg(t, 6.8, 7.8), sys = seg(t, 7.8, 8.8);
-    const lift = seg(t, 8.8, 10.2), out = seg(t, 10.0, 10.6), groundAlpha = 1 - seg(t, 8.8, 9.6);
+    // Timeline (s): 0–2 approach · 2–6 radar scan of 200 m · 6–8.5 composition (particles + DNA) ·
+    //   8.5–10.5 lock-on zoom · 9.8–11.4 surroundings fade · 10.5–11.5 pixelate · 11.1–12.1 hull wipe ·
+    //   12.2–13.6 modules · 13.6–14.4 systems · 14.4–15.8 lift-off · 15.6–16.2 hand-over
+    const mFit = Math.max(1 / WIDE, Math.min(0.5, (H * 0.86) / (2 * SpaceshipCompose.RADIUS * ship.scale)));
+    const a1 = seg(t, 0, 2), a2 = seg(t, 8.5, 10.5);
+    const m = Math.exp(Math.log(1 / WIDE) + (Math.log(mFit) - Math.log(1 / WIDE)) * a1 + (Math.log(1) - Math.log(mFit)) * a2);
+    const scan = Math.min(1, Math.max(0, (t - 2) / 4)), comp = seg(t, 6, 8.5);
+    const pix = seg(t, 10.5, 11.5), dark = seg(t, 9.8, 11.4), wipe = seg(t, 11.1, 12.1), mods = seg(t, 12.2, 13.6), sys = seg(t, 13.6, 14.4);
+    const lift = seg(t, 14.4, 15.8), out = seg(t, 15.6, 16.2), groundAlpha = 1 - seg(t, 14.4, 15.2);
     g.fillStyle = PAL.space; g.fillRect(0, 0, CW, CH);
-    // --- ground: wide neighbourhood + detailed building area
+    // --- ground: wide neighbourhood → middle → detailed building area
     if (groundAlpha > 0) {
       if (m < 0.999) {
-        g.imageSmoothingEnabled = true;
         if (it.wide) drawLayer(g, it.wide, WIDE, m, groundAlpha);
-        if (it.mid) drawLayer(g, it.mid, 3, m, groundAlpha * Math.max(0, Math.min(1, (m - 1 / WIDE) / 0.08)));
-        drawLayer(g, it.groundSoft, 1, m, groundAlpha * Math.max(0, Math.min(1, (m - 0.2) / 0.15)));
+        if (it.mid) drawLayer(g, it.mid, 3, m, groundAlpha * Math.max(0, Math.min(1, (m - 0.26) / 0.1)));
+        drawLayer(g, it.groundSoft, 1, m, groundAlpha * Math.max(0, Math.min(1, (m - 0.45) / 0.2)));
       } else {
-        const block = Math.max(1, Math.round(1 + pix * (K - 1)));          // pixelate 1 → K
+        const block = Math.max(1, Math.round(1 + pix * (K - 1)));
         const tw = Math.ceil(CW / block), th = Math.ceil(CH / block);
         it.tmp.width = tw; it.tmp.height = th;
         const tg = it.tmp.getContext("2d"); tg.imageSmoothingEnabled = true; tg.drawImage(it.ground, 0, 0, tw, th);
         g.imageSmoothingEnabled = false;
         g.save(); g.globalAlpha = groundAlpha; g.drawImage(it.tmp, 0, 0, tw, th, 0, 0, CW, CH); g.restore();
       }
-      // surroundings fade into space, the building stays lit
       if (dark > 0) {
         g.save(); ringPath(g, ship, K, m); g.rect(CW, 0, -CW, CH); g.clip("evenodd");
         g.fillStyle = `rgba(20,17,39,${0.92 * dark * groundAlpha})`; g.fillRect(0, 0, CW, CH); g.restore();
       }
     }
-    // stars appear in the dark
+    // --- radar scan of the 200 m circle: classification colours appear behind the sweep
+    const center = res ? res.center : { lat: cur.address.lat, lon: cur.address.lon };
+    const [cpx, cpy] = ship.llToPx(center.lat, center.lon);
+    const CX = (W / 2 + (cpx - W / 2) * m) * K, CY = (H / 2 + (cpy - H / 2) * m) * K;
+    const RR = SpaceshipCompose.RADIUS * ship.scale * m * K, scanVis = Math.min(seg(t, 1.6, 2.2), 1 - seg(t, 8.2, 9.6));
+    if (scanVis > 0.01) {
+      const ang = -Math.PI / 2 + scan * 2 * Math.PI;
+      if (res && res.overlay && scan > 0) {
+        g.save(); g.beginPath(); g.moveTo(CX, CY); g.arc(CX, CY, RR, -Math.PI / 2, ang); g.closePath(); g.clip();
+        drawGeoImage(g, res.overlay, res.metresPerPx, center, m, 0.72 * scanVis * (1 - comp * 0.6));
+        g.restore();
+      }
+      g.save(); g.globalAlpha = scanVis;
+      g.strokeStyle = "rgba(125,252,255,.8)"; g.lineWidth = 2 * K / 2; g.setLineDash([4 * K, 3 * K]);
+      g.beginPath(); g.arc(CX, CY, RR, 0, 2 * Math.PI); g.stroke(); g.setLineDash([]);
+      if (scan > 0 && scan < 1) {                                  // sweep beam with fading trail
+        for (let i = 0; i < 24; i++) {
+          const a = ang - i * 0.03; g.strokeStyle = `rgba(125,252,255,${0.9 * (1 - i / 24)})`; g.lineWidth = (i ? 1 : 3) * K / 2;
+          g.beginPath(); g.moveTo(CX, CY); g.lineTo(CX + Math.cos(a) * RR, CY + Math.sin(a) * RR); g.stroke();
+        }
+      }
+      g.fillStyle = "rgba(125,252,255,.9)"; g.font = `700 ${5 * K / 2}px ui-monospace,monospace`; g.textAlign = "center";
+      g.fillText("200 M", CX, CY - RR - 3 * K / 2);
+      g.restore();
+    }
+    // --- composition: coloured particles stream from the surroundings into the building
+    if (comp > 0 && comp < 1 && res && res.satellite) {
+      if (!it.parts) {
+        it.parts = []; const sh = res.satellite.share;
+        CAT.slice(0, 5).forEach(([k]) => { const n = Math.round(sh[k] * 160); for (let i = 0; i < n; i++) {
+          const a = Math.random() * 2 * Math.PI, r = Math.sqrt(Math.random()) * 0.95 + 0.05;
+          it.parts.push({ k, a, r, d: Math.random() * 0.35 }); } });
+      }
+      g.save();
+      it.parts.forEach((p) => {
+        const q = Math.min(1, Math.max(0, (comp - p.d) / (1 - p.d))), e = q * q;
+        const r = p.r * (1 - e) * RR, a = p.a + e * 1.2, c = SpaceshipCompose.CLASS[p.k];
+        g.fillStyle = `rgba(${c.join(",")},${0.9 * (1 - e * 0.5)})`;
+        g.fillRect(CX + Math.cos(a) * r - K / 2, CY + Math.sin(a) * r - K / 2, K * 1.2, K * 1.2);
+      });
+      g.restore();
+    }
+    // --- target marker
+    const glow = (1 - wipe) * (0.6 + 0.4 * Math.sin(t * 9)) * seg(t, 0.8, 1.6);
+    if (glow > 0.02) {
+      g.save(); g.globalAlpha = glow; ringPath(g, ship, K, m);
+      g.strokeStyle = "#ff6bd6"; g.lineWidth = K * (m < 0.6 ? 1.2 : 1); g.setLineDash([3 * K, 2 * K]); g.lineDashOffset = -t * 40; g.stroke();
+      g.restore();
+    }
+    // --- stars
     if (dark > 0) {
       g.fillStyle = `rgba(255,255,255,${dark})`;
       stars.forEach((st) => g.fillRect(Math.round(st.x) * K, Math.round(st.y) * K, K, K));
     }
-    // target marker during the approach: brackets that close in on the building
-    const glow = (1 - wipe) * (0.6 + 0.4 * Math.sin(t * 9)) * seg(t, 0.8, 1.6);
-    if (glow > 0.02) {
-      g.save(); g.globalAlpha = glow; ringPath(g, ship, K, m);
-      g.strokeStyle = "#7dfcff"; g.lineWidth = K * (m < 0.6 ? 1.5 : 1); g.setLineDash([3 * K, 2 * K]); g.lineDashOffset = -t * 40; g.stroke();
-      g.setLineDash([]);
-      const xs = ship.ringPx.map((p) => (W / 2 + (p[0] - W / 2) * m) * K), ys = ship.ringPx.map((p) => (H / 2 + (p[1] - H / 2) * m) * K);
-      const pad = (1 - a1) * 40 * K + 6 * K, x0 = Math.min(...xs) - pad, x1 = Math.max(...xs) + pad, y0 = Math.min(...ys) - pad, y1 = Math.max(...ys) + pad;
-      const L = 8 * K; g.strokeStyle = "#ff6bd6"; g.lineWidth = K;
-      [[x0, y0, 1, 1], [x1, y0, -1, 1], [x0, y1, 1, -1], [x1, y1, -1, -1]].forEach(([x, y, sx, sy]) => {
-        g.beginPath(); g.moveTo(x, y + sy * L); g.lineTo(x, y); g.lineTo(x + sx * L, y); g.stroke();
-      });
-      g.restore();
-    }
-    // --- hull: wipes in from the rear (left) to the nose (right)
-    const sc = 1 + Math.sin(lift * Math.PI) * 0.14 + lift * 0.02;
-    const shadowOff = lift * 10 * K;
+    // --- hull (without modules first), then modules fade in with a flash
+    const sc = 1 + Math.sin(lift * Math.PI) * 0.14 + lift * 0.02, shadowOff = lift * 10 * K;
     if (wipe > 0) {
+      const base = ship.baseSprite ? ship.baseSprite() : ship.sprite;
       const xs = ship.ringPx.map((p) => p[0]), x0 = Math.min(...xs) - 6, x1 = Math.max(...xs) + 2;
       const reveal = (x0 + (x1 - x0) * wipe) * K;
       g.save(); g.imageSmoothingEnabled = false;
       g.translate(CW / 2, CH / 2); g.scale(sc, sc); g.translate(-CW / 2, -CH / 2);
       if (lift > 0) { g.globalAlpha = 0.45 * (1 - out); g.drawImage(it.silhouette, shadowOff, shadowOff * 0.8, CW, CH); g.globalAlpha = 1; }
-      g.beginPath(); g.rect(0, 0, reveal, CH); g.clip();
-      g.drawImage(ship.sprite, 0, 0, CW, CH);
+      g.save(); g.beginPath(); g.rect(0, 0, reveal, CH); g.clip();
+      g.drawImage(base, 0, 0, CW, CH);
       if (wipe < 1) { g.fillStyle = "rgba(125,252,255,.85)"; g.fillRect(reveal - K, 0, K, CH); }
       g.restore();
+      if (mods > 0) {
+        g.globalAlpha = mods; g.drawImage(ship.sprite, 0, 0, CW, CH); g.globalAlpha = 1;
+        if (mods < 1) {                                           // energy ring while modules lock in
+          g.strokeStyle = `rgba(255,107,214,${1 - mods})`; g.lineWidth = K;
+          g.beginPath(); g.arc(CW / 2, CH / 2, (0.15 + mods * 0.5) * CW, 0, 2 * Math.PI); g.stroke();
+        }
+      }
+      g.restore();
     }
-    // --- systems on: ports one by one, engines
+    // --- systems
     if (sys > 0) {
       g.save(); g.translate(CW / 2, CH / 2); g.scale(sc, sc); g.translate(-CW / 2, -CH / 2);
       const n = ship.ports.length;
@@ -418,15 +515,18 @@
       });
       g.restore();
     }
-    // --- captions
+    // --- captions + scan readout (information stays in the intro, outside the sky screen)
     const label = cur.address.label || "", name = label.split(/\s\d{4}\s/)[0].toUpperCase();
     const town = ((label.match(/\d{4,5}\s+(.+)$/) || [])[1] || "").toUpperCase();
-    const alt = Math.round((1 / m) * (W / ship.scale) * 1.2);             // rough "camera height" for fun
-    cap.textContent = t < 3.5 ? `APPROACHING ${town || "TARGET"} · ALT ${alt} M` : t < 5 ? `TARGET: ${name}` : t < 6.2 ? "LOCKING ON…"
-      : t < 7.8 ? "CONVERTING STRUCTURE…" : t < 8.8 ? "SYSTEMS ONLINE" : "LIFT-OFF";
-    cap.classList.toggle("go", t >= 8.8);
+    const alt = Math.round((1 / m) * (W / ship.scale) * 1.2);
+    cap.textContent = t < 2 ? `APPROACHING ${town || "TARGET"} · ALT ${alt} M` : t < 6 ? `SCANNING ${name} + 200 M` : t < 8.5 ? "COMPOSING SHIP DNA…"
+      : t < 10.5 ? `TARGET LOCK: ${name}` : t < 12.2 ? "CONVERTING STRUCTURE…" : t < 13.6 ? "FITTING MODULES" : t < 14.4 ? "SYSTEMS ONLINE" : "LIFT-OFF";
+    cap.classList.toggle("go", t >= 14.4);
+    if (t >= 2 && t < 8.5) scanHud(t, res, t < 6 ? "scan" : "compose", t < 6 ? scan : comp);
+    else if (t >= 12.2 && t < 14.4) scanHud(t, res, "modules", mods);
+    else { const h = ui.q(".lv-scanhud"); if (h) h.hidden = true; }
     if (out > 0) it.cv.style.opacity = String(1 - out);
-    if (t >= 10.6) { it.cv.hidden = true; cap.hidden = true; intro = null; }
+    if (t >= 16.2) { it.cv.hidden = true; cap.hidden = true; const h = ui.q(".lv-scanhud"); if (h) h.hidden = true; intro = null; }
   }
 
   // ---------- pixel view animation ----------
@@ -504,7 +604,6 @@
     ui.q("#ck-src").textContent = vv.az == null ? "HDG UNKNOWN" : `VIEW ${Math.round(vv.az)}° (${vv.azSrc}) · ${vv.el >= 0 ? "+" : ""}${Math.round(vv.el)}° (${vv.elSrc})`;
     drawTape(az);
     // horizon line tilts with the recorded camera elevation
-    ui.q("#ck-horizon").style.transform = `translateY(${tilt != null ? Math.max(-40, Math.min(40, tilt * 2.2)) : 0}%)`;
     ui.qa(".ck-win").forEach((b, k) => b.classList.toggle("on", k === i));
   }
   // ---------- ship composition panel ----------
@@ -721,6 +820,7 @@
           <canvas class="lv-main" width="${W}" height="${H}"></canvas>
           <canvas class="lv-intro" width="${W * K}" height="${H * K}" hidden></canvas>
           <div class="lv-caption" hidden></div>
+          <div class="lv-scanhud" hidden></div>
           <canvas class="lv-origin" width="${W * 2}" height="${H * 2}" title="Origin: your building from above"></canvas>
           <button class="lv-replay" type="button">↺ Replay take-off</button>
           <div class="lv-hud lv-tl">${String(Math.round(st.windows.length * 1000 + floor * 137 + 4242)).padStart(5, "0")}</div>
@@ -732,7 +832,6 @@
           <div class="sp-status">Scanning the surroundings…</div></div>
         <div class="lv-cockpit">
           <div class="ck-view" id="ck-view"></div>
-          <div class="ck-horizon" id="ck-horizon"></div>
           <div class="ck-scan"></div>
           <svg class="ck-frame" viewBox="0 0 1000 640" preserveAspectRatio="none" aria-hidden="true">
             <defs><linearGradient id="ckm" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#1b2338"/><stop offset="1" stop-color="#080b14"/></linearGradient></defs>
@@ -744,11 +843,6 @@
             <path d="M170 70 L80 470 M830 70 L920 470" stroke="#7dfcff" stroke-opacity=".25" stroke-width="2"/>
             <path d="M0 470 Q500 420 1000 470" stroke="#7dfcff" stroke-opacity=".45" stroke-width="2" fill="none"/>
           </svg>
-          <div class="ck-tape" id="ck-tape"></div>
-          <div class="ck-reticle"><span></span></div>
-          <div class="ck-side ck-left"><b id="ck-name">–</b><span>HDG <i id="ck-hdg">–</i></span><span>TILT <i id="ck-tilt">–</i></span></div>
-          <div class="ck-side ck-right"><span id="ck-alt">–</span><span id="ck-pos">–</span><span id="ck-src">–</span><span id="ck-sun"></span></div>
-          <div class="ck-skyinfo" id="ck-sky-info"></div>
           <div class="ck-dash">
             <div class="ck-panel ck-wins"><button class="ck-mode" type="button" title="Real stars / original photo">★ SPACE</button></div>
             <canvas class="ck-radar" width="120" height="120"></canvas>
@@ -756,6 +850,14 @@
               <button class="ck-now" type="button">NOW</button></div>
               <input class="ck-slider" type="range" min="-12" max="12" step="0.25" value="0" aria-label="Time offset in hours">
               <small id="ck-date">NOW · LIVE</small></div>
+          </div>
+        </div>
+        <div class="lv-info">
+          <div class="ck-tape" id="ck-tape"></div>
+          <div class="li-row">
+            <div class="li-col"><b id="ck-name">–</b><span>HDG <i id="ck-hdg">–</i></span><span>TILT <i id="ck-tilt">–</i></span></div>
+            <div class="li-col li-mid" id="ck-sky-info"></div>
+            <div class="li-col li-right"><span id="ck-alt">–</span><span id="ck-pos">–</span><span id="ck-src">–</span><span id="ck-sun"></span></div>
           </div>
         </div>
       </div>`;

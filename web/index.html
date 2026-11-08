@@ -72,11 +72,28 @@
   main.wide { max-width: 1280px; }
   /* ---- launch view ---- */
   .lv-grid { display: grid; grid-template-columns: 1fr; gap: 14px; }
-  .lv-cockpit { order: 2; } .lv-spec { order: 3; }
+  .lv-cockpit { order: 2; } .lv-info { order: 3; } .lv-spec { order: 4; }
   @media (min-width: 980px) {
     .lv-grid { grid-template-columns: 1.1fr 1fr; align-items: stretch; }
     .lv-pixel { order: 1; } .lv-spec { order: 2; } .lv-cockpit { order: 3; grid-column: 1 / -1; aspect-ratio: 16 / 8.2; }
+    .lv-info { order: 4; grid-column: 1 / -1; }
   }
+  /* ---- readout strip under the cockpit (keeps the sky screen free of text) ---- */
+  .lv-info { margin-top: -6px; border: 1px solid var(--line); border-radius: 0 0 14px 14px; background: #0a0e1c; padding: 8px 12px 10px;
+    font: 600 11px/1.4 ui-monospace, Menlo, monospace; color: #7dfcff; }
+  .lv-info .ck-tape { position: relative; left: auto; right: auto; top: auto; height: 26px; margin: 0 8% 6px; }
+  .li-row { display: grid; grid-template-columns: 1fr 1.4fr 1fr; gap: 10px; align-items: start; }
+  @media (max-width: 640px) { .li-row { grid-template-columns: 1fr 1fr; } .li-mid { grid-column: 1 / -1; order: 3; } }
+  .li-col { display: flex; flex-direction: column; gap: 2px; } .li-col b { color: #ff6bd6; } .li-col i { font-style: normal; color: #fff; }
+  .li-mid { text-align: center; color: #c9d3f5; align-self: center; } .li-right { text-align: right; }
+  /* ---- scan readout in the intro ---- */
+  .lv-scanhud { position: absolute; right: 10px; top: 68px; width: min(46%, 230px); display: flex; flex-direction: column; gap: 2px; pointer-events: none;
+    background: rgba(5,10,24,.78); border: 1px solid rgba(125,252,255,.45); border-radius: 8px; padding: 7px 9px;
+    font: 600 10px/1.35 ui-monospace, Menlo, monospace; color: #c9d3f5; letter-spacing: .03em; }
+  .lv-scanhud b { color: #ff6bd6; letter-spacing: .1em; font-size: 10px; }
+  .lv-scanhud div { display: flex; align-items: center; gap: 6px; } .lv-scanhud s { width: 9px; height: 9px; border-radius: 2px; }
+  .lv-scanhud em { margin-left: auto; font-style: normal; color: #fff; } .lv-scanhud .dim { color: var(--muted); }
+  .lv-scanhud .add { color: #7dfcff; }
   /* ---- ship composition panel ---- */
   .lv-spec { border: 1px solid var(--line); border-radius: 14px; background: #0d1124; padding: 12px; display: flex; flex-direction: column; gap: 10px;
     font: 12px/1.35 ui-monospace, Menlo, monospace; color: #c9d3f5; }
@@ -273,13 +290,13 @@
   <p class="muted" style="font-size:12px;margin-top:24px">Imagery: © swisstopo (Switzerland), © Esri and its data providers (elsewhere). Buildings & search: © OpenStreetMap contributors.</p>
 </main>
 
-<script src="config.js?v=202611081413"></script>
+<script src="config.js?v=202611081419"></script>
 <script src="vendor/leaflet/leaflet.js"></script>
 <script src="vendor/exifr-7.1.3.full.umd.js"></script>
 <script src="vendor/astronomy-engine-2.1.19.min.js"></script>
-<script src="compose.js?v=202611081413"></script>
-<script src="sky.js?v=202611081413"></script>
-<script src="launch.js?v=202611081413"></script>
+<script src="compose.js?v=202611081419"></script>
+<script src="sky.js?v=202611081419"></script>
+<script src="launch.js?v=202611081419"></script>
 <script>
 "use strict";
 const cfg = window.SPACESHIP_CONFIG || {};
