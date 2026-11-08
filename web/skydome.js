@@ -48,8 +48,13 @@
       const md = m.canvas.getContext("2d").getImageData(0, 0, m.canvas.width, m.canvas.height).data, cw = m.canvas.width, ch = m.canvas.height;
       skyline = new Float32Array(cw); const has = new Uint8Array(cw);
       for (let x = 0; x < cw; x++) {
-        let low = -1, count = 0;
-        for (let y = 0; y < ch; y++) if (md[(y * cw + x) * 4 + 3] > 128) { low = y; count++; }
+        // skyline = end of the lowest real sky run (runs shorter than 3 % are specks: reflections, white walls)
+        let low = -1, count = 0, run = 0;
+        for (let y = 0; y <= ch; y++) {
+          const sky = y < ch && md[(y * cw + x) * 4 + 3] > 128;
+          if (sky) run++;
+          else { if (run > ch * 0.03 && y - run < ch * 0.7) { low = y - 1; count += run; } run = 0; }   // sky never starts in the bottom 30 %
+        }
         if (count > ch * 0.04) { skyline[x] = (low + 1) / ch; has[x] = 1; }
       }
       // columns without sky (window bars, frame): interpolate between neighbours
@@ -107,8 +112,9 @@
         const fe = mg.createLinearGradient(0, 0, OW, 0);
         fe.addColorStop(0, "rgba(0,0,0,0)"); fe.addColorStop(0.06, "#000"); fe.addColorStop(0.94, "#000"); fe.addColorStop(1, "rgba(0,0,0,0)");
         mg.fillStyle = fe; mg.fillRect(0, 0, OW, OH);
-        const fb2 = mg.createLinearGradient(0, OH * 0.8, 0, OH);
-        fb2.addColorStop(0, "#000"); fb2.addColorStop(1, "rgba(0,0,0,0)"); mg.fillStyle = fb2; mg.fillRect(0, OH * 0.8, OW, OH * 0.2);
+        // (destination-in clears everything outside the drawn rect, so fill the whole canvas)
+        const fb2 = mg.createLinearGradient(0, 0, 0, OH);
+        fb2.addColorStop(0, "#000"); fb2.addColorStop(0.8, "#000"); fb2.addColorStop(1, "rgba(0,0,0,0)"); mg.fillStyle = fb2; mg.fillRect(0, 0, OW, OH);
         og.drawImage(mask, 0, 0);
       }
     }
