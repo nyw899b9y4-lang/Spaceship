@@ -94,6 +94,15 @@
   .lv-cockpit { position: relative; border-radius: 14px; overflow: hidden; border: 1px solid var(--line); background: #000; aspect-ratio: 16 / 10.5; min-height: 300px; }
   .ck-view { position: absolute; inset: 0; }
   .ck-view img, .ck-view canvas.ck-sky { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .ck-view canvas.ck-hl { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+  .ck-view { cursor: crosshair; }
+  .ck-tip { position: absolute; z-index: 5; width: 220px; display: flex; flex-direction: column; gap: 2px; padding: 9px 11px; border-radius: 10px;
+    background: rgba(5,10,24,.88); border: 1px solid rgba(255,107,214,.6); box-shadow: 0 0 24px rgba(255,107,214,.25), 0 8px 24px rgba(0,0,0,.5);
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); color: #dfe6ff; font: 12px/1.35 -apple-system, BlinkMacSystemFont, sans-serif;
+    opacity: 0; transform: translateY(6px) scale(.97); transition: opacity .35s ease, transform .35s ease; pointer-events: none; }
+  .ck-tip.on { opacity: 1; transform: none; }
+  .ck-tip b { font-size: 15px; letter-spacing: .01em; } .ck-tip i { font-style: normal; color: #7dfcff; font-size: 11px; margin-bottom: 3px; }
+  .ck-tip small { color: #8e98b8; font-size: 10px; margin-top: 3px; font-family: ui-monospace, monospace; }
   .ck-skyinfo { position: absolute; left: 50%; bottom: 27%; transform: translateX(-50%); max-width: 70%; text-align: center; color: #7dfcff;
     font: 600 10px/1.3 ui-monospace, monospace; letter-spacing: .08em; background: rgba(5,10,22,.72); padding: 3px 8px; border-radius: 4px; pointer-events: none; }
   .ck-mode, .ck-now { height: 30px; padding: 0 8px; border-radius: 6px; border: 1px solid #ff6bd6; background: transparent; color: #ff6bd6; font: 700 11px ui-monospace, monospace; }
@@ -234,12 +243,12 @@
   <p class="muted" style="font-size:12px;margin-top:24px">Imagery: © swisstopo (Switzerland), © Esri and its data providers (elsewhere). Buildings & search: © OpenStreetMap contributors.</p>
 </main>
 
-<script src="config.js?v=202611081338"></script>
+<script src="config.js?v=202611081343"></script>
 <script src="vendor/leaflet/leaflet.js"></script>
 <script src="vendor/exifr-7.1.3.full.umd.js"></script>
 <script src="vendor/astronomy-engine-2.1.19.min.js"></script>
-<script src="sky.js?v=202611081338"></script>
-<script src="launch.js?v=202611081338"></script>
+<script src="sky.js?v=202611081343"></script>
+<script src="launch.js?v=202611081343"></script>
 <script>
 "use strict";
 const cfg = window.SPACESHIP_CONFIG || {};

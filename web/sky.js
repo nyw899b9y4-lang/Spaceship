@@ -8,7 +8,7 @@
 
   function load() {
     if (catalog) return Promise.resolve(catalog);
-    if (!loading) loading = fetch("vendor/sky/sky.json").then((r) => r.json()).then((j) => (catalog = j));
+    if (!loading) loading = fetch("vendor/sky/sky.json?v=2").then((r) => r.json()).then((j) => (catalog = j));
     return loading;
   }
 
@@ -135,7 +135,7 @@
     const sky = document.createElement("canvas"); sky.width = W; sky.height = H;
     const k = sky.getContext("2d");
     const grad = k.createLinearGradient(0, oy, 0, oy + ph);
-    grad.addColorStop(0, "#02030a"); grad.addColorStop(0.7, "#0a1030"); grad.addColorStop(1, "#1b1f4a");
+    grad.addColorStop(0, "#000106"); grad.addColorStop(0.7, "#060a22"); grad.addColorStop(1, "#141838");
     k.fillStyle = grad; k.fillRect(0, 0, W, H);
     const proj0 = camera(view.az, view.el, hfov, vfov, pw, ph), proj = (v) => { const p = proj0(v); return p && [p[0] + ox, p[1] + oy]; };
     const lst = lstDeg(view.time, view.lon), inside = (p, m = 0) => p && p[0] > ox - m && p[0] < ox + pw + m && p[1] > oy - m && p[1] < oy + ph + m;
@@ -159,14 +159,29 @@
         k.fillText(c.n.toUpperCase(), p[0], y); info.inView.push({ type: "constellation", name: c.n });
       }
     });
-    // stars
-    catalog.stars.forEach(([ra, dec, mag, bv, name]) => {
+    // stars – bright, glowing, the brightest with light rays
+    const objects = []; info.objects = objects;
+    if (!catalog.conName) { catalog.conName = {}; catalog.cons.forEach((c) => (catalog.conName[c.id] = c.n)); }
+    catalog.stars.forEach(([ra, dec, mag, bv, name, desig, con, hip]) => {
       const sv = horizVec(ra, dec, view.lat, lst), p = proj(sv);
       if (!inside(p) || altOf(sv) < -1) return;           // below the horizon: hidden by the Earth
-      const r = Math.max(0.5, (6.6 - mag) * 0.5) * scale;
-      k.fillStyle = bvColor(bv);
-      if (mag < 2) { k.shadowColor = k.fillStyle; k.shadowBlur = 8 * scale; }
+      const r = Math.max(0.9, (7 - mag) * 0.72) * scale, col = bvColor(bv);
+      if (mag < 3.5) {                                     // soft halo
+        const halo = k.createRadialGradient(p[0], p[1], 0, p[0], p[1], r * 4);
+        halo.addColorStop(0, col.replace("rgb", "rgba").replace(")", ",.55)")); halo.addColorStop(1, "rgba(0,0,0,0)");
+        k.fillStyle = halo; k.beginPath(); k.arc(p[0], p[1], r * 4, 0, 2 * Math.PI); k.fill();
+      }
+      if (mag < 1.5) {                                     // diffraction spikes
+        k.strokeStyle = col.replace("rgb", "rgba").replace(")", ",.7)"); k.lineWidth = Math.max(1, scale * 0.8);
+        const L = r * 5;
+        k.beginPath(); k.moveTo(p[0] - L, p[1]); k.lineTo(p[0] + L, p[1]); k.moveTo(p[0], p[1] - L); k.lineTo(p[0], p[1] + L); k.stroke();
+      }
+      k.fillStyle = col; k.shadowColor = col; k.shadowBlur = (mag < 2.5 ? 10 : 4) * scale;
       k.beginPath(); k.arc(p[0], p[1], r, 0, 2 * Math.PI); k.fill(); k.shadowBlur = 0;
+      k.fillStyle = "#fff"; k.beginPath(); k.arc(p[0], p[1], r * 0.45, 0, 2 * Math.PI); k.fill();   // hot core
+      const az = (Math.atan2(sv[0], sv[1]) * R2D + 360) % 360;
+      objects.push({ type: "star", x: p[0], y: p[1], r, mag, bv, name, desig, con, conName: catalog.conName[con] || con, hip,
+                     alt: altOf(sv), az, ra, dec });
       if (name && mag < 1.8) {
         k.fillStyle = "rgba(255,255,255,.85)"; k.font = `${Math.round(11 * scale)}px -apple-system,sans-serif`; k.textAlign = "left";
         const y = place(p[0] + r + 4, p[1] + 4, name.length * 6.5 * scale, 12 * scale);
@@ -187,6 +202,9 @@
         k.save(); k.globalAlpha = 0.85; k.fillStyle = "#0a1030"; k.beginPath();
         k.ellipse(p[0] + (b.phase < 180 ? -1 : 1) * r * lit * 2, p[1], r, r, 0, 0, 2 * Math.PI); k.fill(); k.restore();
       }
+      const ill = window.Astronomy && b.name !== "Sun" ? Astronomy.Illumination(b.name, view.time) : null;
+      objects.push({ type: "body", x: p[0], y: p[1], r: r * 1.5, name: b.name, sym: b.sym, alt: b.alt, az: b.az, phase: b.phase,
+                     mag: ill ? ill.mag : -26.7, distAU: ill ? ill.geo_dist : 1 });
       k.fillStyle = "#ff9be6"; k.font = `700 ${Math.round(11 * scale)}px ui-monospace,monospace`; k.textAlign = "left";
       const label = `${b.sym} ${b.name.toUpperCase()}`;
       const y = place(p[0] + r + 5, p[1] + 4, label.length * 7.5 * scale, 13 * scale);
@@ -200,12 +218,21 @@
       const mk = document.createElement("canvas"); mk.width = W; mk.height = H;
       const mg = mk.getContext("2d"); mg.filter = `blur(${Math.max(1, pw / 300)}px)`; mg.drawImage(m.canvas, ox, oy, pw, ph);
       k.globalCompositeOperation = "destination-in"; k.drawImage(mk, 0, 0);
+      info.visibleAt = (x, y) => { try { return mg.getImageData(Math.round(x), Math.round(y), 1, 1).data[3] > 60; } catch (_) { return true; } };
     } else {
+      info.visibleAt = (x, y) => y < oy + ph * 0.6;
       k.globalCompositeOperation = "destination-in"; k.fillStyle = "#000"; k.fillRect(ox, oy, pw, ph * 0.6);
     }
     g.drawImage(sky, 0, 0);
     return info;
   }
 
-  window.SpaceshipSky = { load, render, bodies };
+  // B–V colour index → surface temperature (Ballesteros 2012) and spectral class
+  function starPhysics(bv) {
+    const T = 4600 * (1 / (0.92 * bv + 1.7) + 1 / (0.92 * bv + 0.62));
+    const cls = bv < -0.02 ? ["B", "blue-white"] : bv < 0.3 ? ["A", "white"] : bv < 0.58 ? ["F", "yellow-white"]
+              : bv < 0.81 ? ["G", "yellow (like the Sun)"] : bv < 1.4 ? ["K", "orange"] : ["M", "red"];
+    return { tempK: Math.round(T / 100) * 100, cls: cls[0], colour: cls[1] };
+  }
+  window.SpaceshipSky = { load, render, bodies, starPhysics, bvColor };
 })();

@@ -376,7 +376,7 @@
       const img = new Image(); img.crossOrigin = "anonymous";
       img.onload = () => { if (ui && ui.photo === img) renderSky(); };
       img.src = w.photo.url; ui.photo = img;
-      ui.view.innerHTML = '<canvas class="ck-sky"></canvas>';
+      ui.view.innerHTML = '<canvas class="ck-sky"></canvas><canvas class="ck-hl"></canvas><div class="ck-tip"></div>';
     }
     else ui.view.innerHTML = '<div class="nosignal">NO SIGNAL</div>';
     const floor = Number(document.getElementById("floor").value) || 0;
@@ -409,6 +409,7 @@
     const w = cur.windows[active], v = viewOf(w), t = skyTime();
     if (v.az == null || !window.SpaceshipSky) { cv.getContext("2d").drawImage(ui.photo, 0, 0, cv.width, cv.height); return; }
     const info = SpaceshipSky.render(cv, ui.photo, { lat: w.lat, lon: w.lon, az: v.az, el: v.el, time: t, mode: ui.skyMode });
+    ui.skyInfo = info; hideTip();
     const named = info && info.inView.filter((x) => x.type !== "constellation").map((x) => x.name);
     const cons = info && info.inView.filter((x) => x.type === "constellation").map((x) => x.name);
     ui.q("#ck-sky-info").textContent = ui.skyMode === "photo" ? "SKY: PHOTO" :
@@ -417,6 +418,74 @@
     ui.q("#ck-sun").textContent = info && info.sunAlt != null ? `SUN ${info.sunAlt >= 0 ? "+" : ""}${Math.round(info.sunAlt)}° ${info.sunAlt > 0 ? "DAY" : info.sunAlt > -12 ? "TWILIGHT" : "NIGHT"}` : "";
     ui.q("#ck-time").textContent = t.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     ui.q("#ck-date").textContent = ui.timeOffsetH ? `${ui.timeOffsetH > 0 ? "+" : ""}${ui.timeOffsetH} H · ${t.toLocaleDateString()}` : "NOW · LIVE";
+  }
+
+  // ---------- hover / tap: star info ----------
+  const compass16 = (az) => ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"][Math.round(az / 22.5) % 16];
+  function magWords(m) {
+    return m < 0 ? "one of the brightest objects in the sky" : m < 1 ? "one of the brightest stars" : m < 2 ? "very bright"
+         : m < 3.5 ? "clearly visible" : m < 5 ? "visible to the eye" : "faint – needs a dark sky";
+  }
+  function tipHtml(o) {
+    const pos = `${o.alt >= 0 ? Math.round(o.alt) + "° above the horizon" : "below the horizon"} · ${Math.round(o.az)}° ${compass16(o.az)}`;
+    if (o.type === "star") {
+      const ph = SpaceshipSky.starPhysics(o.bv), title = o.name || o.desig || `HIP ${o.hip}`;
+      const sub = [o.name && o.desig ? o.desig : "", o.conName].filter(Boolean).join(" · ");
+      return `<b style="color:${SpaceshipSky.bvColor(o.bv)}">★ ${title}</b><i>${sub}</i>
+        <span>Brightness ${o.mag.toFixed(2)} mag – ${magWords(o.mag)}</span>
+        <span>${ph.colour} star · type ${ph.cls} · ~${ph.tempK.toLocaleString()} K</span>
+        <span>Now ${pos}</span><small>HIP ${o.hip} · RA ${(o.ra / 15).toFixed(2)} h · Dec ${o.dec.toFixed(1)}°</small>`;
+    }
+    const km = o.distAU * 149597870.7, lightMin = (o.distAU * 499.005) / 60;
+    let extra = "";
+    if (o.name === "Moon") extra = `<span>${Math.round(((1 - Math.cos(o.phase * Math.PI / 180)) / 2) * 100)}% lit · ${Math.round(km).toLocaleString()} km away</span>`;
+    else if (o.name === "Sun") extra = `<span>Light needs ${lightMin.toFixed(1)} minutes to reach your window</span>`;
+    else extra = `<span>${o.distAU.toFixed(2)} AU away · light travels ${lightMin.toFixed(0)} min</span><span>Brightness ${o.mag.toFixed(1)} mag</span>`;
+    return `<b style="color:#ff9be6">${o.sym} ${o.name}</b>${extra}<span>Now ${pos}</span>`;
+  }
+  function hideTip() {
+    if (!ui) return;
+    const tip = ui.view.querySelector(".ck-tip"), hl = ui.view.querySelector(".ck-hl");
+    if (tip) tip.classList.remove("on");
+    if (hl) hl.getContext("2d").clearRect(0, 0, hl.width, hl.height);
+    ui.hover = null;
+  }
+  function pickAt(clientX, clientY) {
+    const cv = ui.view.querySelector(".ck-sky"), info = ui.skyInfo;
+    if (!cv || !info || !info.objects || ui.skyMode !== "space") return null;
+    const r = cv.getBoundingClientRect(), sx = cv.width / r.width;
+    const x = (clientX - r.left) * sx, y = (clientY - r.top) * sx;
+    let best = null, bd = Infinity;
+    info.objects.forEach((o) => {
+      const d = Math.hypot(o.x - x, o.y - y), lim = Math.max(16 * sx, o.r + 8 * sx);
+      // prefer bright objects: a little bonus for brightness
+      const score = d - (6 - Math.min(6, o.mag)) * 1.5 * sx;
+      if (d < lim && score < bd && (!info.visibleAt || info.visibleAt(o.x, o.y))) { bd = score; best = o; }
+    });
+    return best && { o: best, sx, rect: r };
+  }
+  function showTip(hit) {
+    const tip = ui.view.querySelector(".ck-tip"), hl = ui.view.querySelector(".ck-hl"), cv = ui.view.querySelector(".ck-sky");
+    if (!tip || !hl) return;
+    if (ui.hover === hit.o) return;
+    ui.hover = hit.o;
+    hl.width = cv.width; hl.height = cv.height;
+    const g = hl.getContext("2d"), o = hit.o, R = Math.max(10 * hit.sx, o.r * 2.2);
+    g.clearRect(0, 0, hl.width, hl.height);
+    g.strokeStyle = "#ff6bd6"; g.lineWidth = 2 * hit.sx;
+    g.beginPath(); g.arc(o.x, o.y, R, 0, 2 * Math.PI); g.stroke();
+    [[0, -1], [0, 1], [-1, 0], [1, 0]].forEach(([dx, dy]) => { g.beginPath(); g.moveTo(o.x + dx * R * 1.3, o.y + dy * R * 1.3); g.lineTo(o.x + dx * R * 1.9, o.y + dy * R * 1.9); g.stroke(); });
+    tip.innerHTML = tipHtml(o);
+    const cx = o.x / hit.sx, cy = o.y / hit.sx, W0 = hit.rect.width;
+    tip.style.left = Math.min(W0 - 230, Math.max(8, cx + 18)) + "px";
+    tip.style.top = Math.max(8, cy - 20) + "px";
+    tip.classList.remove("on"); void tip.offsetWidth; tip.classList.add("on");   // restart the fade-in
+  }
+  function bindHover() {
+    const v = ui.view;
+    v.addEventListener("mousemove", (e) => { const h = pickAt(e.clientX, e.clientY); if (h) showTip(h); else if (ui.hover) hideTip(); });
+    v.addEventListener("mouseleave", hideTip);
+    v.addEventListener("click", (e) => { const h = pickAt(e.clientX, e.clientY); if (h) { ui.hover = null; showTip(h); } else hideTip(); });
   }
 
   function drawTape(az) {
@@ -534,6 +603,7 @@
     ui.clock = setInterval(renderSky, 30000);                 // the sky turns: refresh every 30 s
     ui.onResize = () => renderSky(); window.addEventListener("resize", ui.onResize);
     if (window.SpaceshipSky) SpaceshipSky.load().then(renderSky);
+    bindHover();
     ship = buildShip(st); initStars(); lasers = []; active = 0;
     selectWindow(0, st);
     // origin inset: the real building from above with its outline – stays visible during flight
