@@ -19,10 +19,11 @@ jobs:
           distribution: temurin
           java-version: 21
 
-      - uses: android-actions/setup-android@v3
-
-      - name: Install Android 17 SDK platform
-        run: sdkmanager "platforms;android-37" || true
+      - name: Install Android 17 SDK platform (uses the runner's preinstalled SDK)
+        run: |
+          SDKM=$(ls -d "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager | sort -V | tail -1)
+          yes | "$SDKM" --licenses > /dev/null || true
+          "$SDKM" "platforms;android-37" || true
 
       - name: Build APK
         run: ./gradlew --no-daemon assembleDebug
