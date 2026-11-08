@@ -4,7 +4,7 @@
 // Visitors can only ADD submissions; they cannot read anyone's data.
 window.SPACESHIP_CONFIG = {
   SUPABASE_URL: "https://yzrgdobxilmrxruzwwvi.supabase.co",
-  SUPABASE_KEY: "",
+  SUPABASE_KEY: "sb_publishable_EJrjYgyAjcDz683W6v3SwQ_mRve5pL5",
   TABLE: "submissions",
   PHOTO_BUCKET: "photos",
 };
