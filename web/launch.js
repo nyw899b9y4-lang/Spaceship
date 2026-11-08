@@ -743,8 +743,8 @@
     const w = cur.windows[active], v = viewOf(w), t = skyTime(), img = ui.photo, portrait = img.naturalHeight >= img.naturalWidth;
     const photo = v.az != null ? { img, az: v.az, el: v.el, hfov: portrait ? 53 : 67, vfov: portrait ? 67 : 53 } : null;
     const info = SpaceshipDome.render(cv, { lat: w.lat, lon: w.lon, time: t, az: ui.cam.az, alt: ui.cam.alt, fov: ui.cam.fov,
-      layers: ui.layers, photo, mode: ui.skyMode });
-    ui.skyInfo = info; hideTip();
+      layers: ui.layers, photo, mode: ui.skyMode, onAsset: requestSky });
+    ui.skyInfo = info; if (ui.pinned) repin(); else hideTip();
     // the real window photo fades in and out every ~10 s (toggle "Photo blend")
     const ph = ui.view.querySelector(".ck-ph");
     if (ph) {
@@ -792,7 +792,15 @@
     return m < 0 ? "one of the brightest objects in the sky" : m < 1 ? "one of the brightest stars" : m < 2 ? "very bright"
          : m < 3.5 ? "clearly visible" : m < 5 ? "visible to the eye" : "faint – needs a dark sky";
   }
+  // al-Ṣūfī / Ptolemy: number in abjad letters + Arabic name
+  function sufiHtml(o) {
+    const S = window.SpaceshipSufi && SpaceshipSufi.star(o.hip); if (!S) return "";
+    const c = SpaceshipSufi.con(S.con) || {};
+    return `<span class="ck-sufi"><span class="ar">${SpaceshipSufi.abjad(S.n)}</span> = <em>${S.n}</em> of the ${c.count || "?"} stars of ${c.tr || S.con} (al-Ṣūfī / Ptolemy)</span>
+      ${S.ar ? `<span class="ck-sufi"><span class="ar">${S.ar}</span> ${S.tr} – ${S.en}</span>` : `<span class="ck-sufi">${S.en}</span>`}`;
+  }
   function tipHtml(o) {
+    if (o.type === "region") return o.html;
     const pos = `${o.alt >= 0 ? Math.round(o.alt) + "° above the horizon" : "below the horizon"} · ${Math.round(o.az)}° ${compass16(o.az)}`;
     if (o.type === "star") {
       const ph = SpaceshipSky.starPhysics(o.bv), title = o.name || o.desig || `HIP ${o.hip}`;
@@ -800,7 +808,7 @@
       return `<b style="color:${SpaceshipSky.bvColor(o.bv)}">★ ${title}</b><i>${sub}</i>
         <span>Brightness ${o.mag.toFixed(2)} mag – ${magWords(o.mag)}</span>
         <span>${ph.colour} star · type ${ph.cls} · ~${ph.tempK.toLocaleString()} K</span>
-        <span>Now ${pos}</span><small>HIP ${o.hip} · RA ${(o.ra / 15).toFixed(2)} h · Dec ${o.dec.toFixed(1)}°</small>`;
+        <span>Now ${pos}</span>${sufiHtml(o)}<small>HIP ${o.hip} · RA ${(o.ra / 15).toFixed(2)} h · Dec ${o.dec.toFixed(1)}°</small>`;
     }
     if (o.type === "dso") {
       return `<b style="color:#ffb4b4">◌ ${o.name}${o.alias ? " · " + o.alias : ""}</b><i>${o.kind}${o.desig ? " · " + o.desig : ""}</i>
@@ -814,12 +822,15 @@
     else extra = `<span>${o.distAU.toFixed(2)} AU away · light travels ${lightMin.toFixed(0)} min</span><span>Brightness ${o.mag.toFixed(1)} mag</span>`;
     return `<b style="color:#ff9be6">${o.sym} ${o.name}</b>${extra}<span>Now ${pos}</span>`;
   }
-  function hideTip() {
+  // tap = pin the info box (stays, follows the star while you drag); tap empty sky or × = close
+  const keyOf = (o) => o && (o.type === "star" ? "s" + o.hip : o.type === "region" ? "r" + o.id : o.type + o.name);
+  function hideTip(force) {
     if (!ui) return;
+    if (ui.pinned && !force) return;
     const tip = ui.view.querySelector(".ck-tip"), hl = ui.view.querySelector(".ck-hl");
-    if (tip) tip.classList.remove("on");
+    if (tip) tip.classList.remove("on", "pinned");
     if (hl) hl.getContext("2d").clearRect(0, 0, hl.width, hl.height);
-    ui.hover = null;
+    ui.hover = null; ui.pinned = null;
   }
   function pickAt(clientX, clientY) {
     const cv = ui.view.querySelector(".ck-sky"), info = ui.skyInfo;
@@ -833,30 +844,53 @@
       const score = d - (6 - Math.min(6, o.mag)) * 1.5 * sx;
       if (d < lim && score < bd && (!info.visibleAt || info.visibleAt(o.x, o.y))) { bd = score; best = o; }
     });
+    if (!best && info.regionAt) { const rg = info.regionAt(x, y); if (rg) return { o: rg, sx, rect: r, at: [x, y] }; }
     return best && { o: best, sx, rect: r };
   }
-  function showTip(hit) {
+  // after a re-render: put a pinned box back on its (moved) object
+  function repin() {
+    if (!ui || !ui.pinned) return;
+    const info = ui.skyInfo, k = ui.pinned.key, cv = ui.view.querySelector(".ck-sky");
+    let o = info && info.objects.find((x) => keyOf(x) === k);
+    if (!o && info && info.regions) { const rg = info.regions.find((x) => keyOf(x.o) === k); o = rg && rg.o; }
+    if (!o || !cv) { hideTip(true); return; }
+    const r = cv.getBoundingClientRect(); ui.hover = null;
+    showTip({ o, sx: cv.width / r.width, rect: r }, true);
+  }
+  function showTip(hit, pin) {
     const tip = ui.view.querySelector(".ck-tip"), hl = ui.view.querySelector(".ck-hl"), cv = ui.view.querySelector(".ck-sky");
     if (!tip || !hl) return;
-    if (ui.hover === hit.o) return;
+    if (ui.hover === hit.o && !pin) return;
+    const fresh = keyOf(ui.hover) !== keyOf(hit.o);
     ui.hover = hit.o;
+    if (pin) ui.pinned = { key: keyOf(hit.o) };
     hl.width = cv.width; hl.height = cv.height;
-    const g = hl.getContext("2d"), o = hit.o, R = Math.max(10 * hit.sx, o.r * 2.2);
+    const g = hl.getContext("2d"), o = hit.o, R = Math.max(10 * hit.sx, (o.r || 6) * 2.2);
     g.clearRect(0, 0, hl.width, hl.height);
-    g.strokeStyle = "#ff6bd6"; g.lineWidth = 2 * hit.sx;
-    g.beginPath(); g.arc(o.x, o.y, R, 0, 2 * Math.PI); g.stroke();
-    [[0, -1], [0, 1], [-1, 0], [1, 0]].forEach(([dx, dy]) => { g.beginPath(); g.moveTo(o.x + dx * R * 1.3, o.y + dy * R * 1.3); g.lineTo(o.x + dx * R * 1.9, o.y + dy * R * 1.9); g.stroke(); });
-    tip.innerHTML = tipHtml(o);
-    const cx = o.x / hit.sx, cy = o.y / hit.sx, W0 = hit.rect.width;
-    tip.style.left = Math.min(W0 - 230, Math.max(8, cx + 18)) + "px";
-    tip.style.top = Math.max(8, cy - 20) + "px";
-    tip.classList.remove("on"); void tip.offsetWidth; tip.classList.add("on");   // restart the fade-in
+    if (o.type !== "region") {
+      g.strokeStyle = pin ? "#ffd27a" : "#ff6bd6"; g.lineWidth = 2 * hit.sx;
+      g.beginPath(); g.arc(o.x, o.y, R, 0, 2 * Math.PI); g.stroke();
+      [[0, -1], [0, 1], [-1, 0], [1, 0]].forEach(([dx, dy]) => { g.beginPath(); g.moveTo(o.x + dx * R * 1.3, o.y + dy * R * 1.3); g.lineTo(o.x + dx * R * 1.9, o.y + dy * R * 1.9); g.stroke(); });
+    }
+    tip.innerHTML = (pin ? '<button class="ck-tip-x" type="button" aria-label="Close">×</button>' : "") + tipHtml(o);
+    tip.classList.toggle("pinned", !!pin);
+    const cx = o.x / hit.sx, cy = o.y / hit.sx, W0 = hit.rect.width, H0 = hit.rect.height;
+    tip.style.left = Math.min(W0 - 250, Math.max(8, cx + 18)) + "px";
+    tip.style.top = Math.min(H0 - 40 - tip.offsetHeight, Math.max(8, cy - 20)) + "px";
+    if (fresh) { tip.classList.remove("on"); void tip.offsetWidth; }   // restart the fade-in only for a new object
+    tip.classList.add("on");
   }
   function bindHover() {
     const v = ui.view;
-    v.addEventListener("mousemove", (e) => { if (e.buttons) return; const h = pickAt(e.clientX, e.clientY); if (h) showTip(h); else if (ui.hover) hideTip(); });
-    v.addEventListener("mouseleave", hideTip);
-    v.addEventListener("click", (e) => { if (ui.wasDrag && ui.wasDrag()) return; const h = pickAt(e.clientX, e.clientY); if (h) { ui.hover = null; showTip(h); } else hideTip(); });
+    v.addEventListener("mousemove", (e) => { if (e.buttons || ui.pinned) return; const h = pickAt(e.clientX, e.clientY); if (h) showTip(h); else if (ui.hover) hideTip(); });
+    v.addEventListener("mouseleave", () => hideTip());
+    v.addEventListener("click", (e) => {
+      if (e.target.closest && e.target.closest(".ck-tip-x")) { hideTip(true); return; }
+      if (e.target.closest && e.target.closest(".ck-tip")) return;
+      if (ui.wasDrag && ui.wasDrag()) return;
+      const h = pickAt(e.clientX, e.clientY);
+      if (h) { ui.hover = null; showTip(h, true); } else hideTip(true);
+    });
   }
 
   function drawTape(az) {
@@ -930,8 +964,10 @@
           <div class="ck-layers">
             <button data-l="mw" class="on" title="Milky Way">Milky Way</button><button data-l="cons" class="on" title="Constellation lines">Lines</button>
             <button data-l="ecl" class="on" title="Ecliptic – path of Sun, Moon and planets">Ecliptic</button><button data-l="dso" class="on" title="Galaxies, nebulae, clusters (Messier)">Deep sky</button>
-            <button data-l="grid" title="Alt-azimuth grid">Alt/Az</button><button data-l="eq" title="Equatorial grid">RA/Dec</button><button data-l="labels" class="on" title="Names">Names</button><button data-l="blend" class="on" title="Blend the real window photo in and out every 10 s">Photo blend</button>
+            <button data-l="grid" title="Alt-azimuth grid">Alt/Az</button><button data-l="eq" title="Equatorial grid">RA/Dec</button><button data-l="labels" class="on" title="Names">Names</button><button data-l="blend" class="on" title="Blend the real window photo in and out every 10 s">Photo blend</button><button data-l="sufi" class="on" title="al-Ṣūfī's constellation drawing (Book of the Fixed Stars, c. 964)">al-Ṣūfī</button>
           </div>
+          <div class="ck-idrow"><button class="ck-id" type="button" title="Show this ship's ID and link">🔑 Ship ID</button></div>
+          <div class="ck-idbox" hidden></div>
           <img class="ck-inlay" alt="Original window photo" title="Original photo – tap to show it in the sky">
           <small class="ck-hint">drag · scroll/pinch zoom · double-click resets</small>
         </div>
@@ -978,8 +1014,23 @@
       if (best >= 0) selectWindow(best, st);
     });
     ui.timeOffsetH = 0; ui.skyMode = "space";
-    ui.layers = { mw: true, cons: true, ecl: true, dso: true, grid: false, eq: false, labels: true, blend: true };
+    ui.layers = { mw: true, cons: true, ecl: true, dso: true, grid: false, eq: false, labels: true, blend: true, sufi: true };
     ui.inlay = q(".ck-inlay");
+    // ship ID: to reopen this ship later (also on another device)
+    q(".ck-id").addEventListener("click", () => {
+      const box = q(".ck-idbox"); if (!box.hidden) { box.hidden = true; return; }
+      const id = st.loadedId;
+      if (!id) { box.innerHTML = "<span>This ship is not saved yet – go back and use <b>Save &amp; launch</b> to get an ID.</span>"; box.hidden = false; return; }
+      const link = location.origin + location.pathname + "?ship=" + id;
+      box.innerHTML = `<span>Ship ID</span><code>${id}</code><span>Link</span><code>${link}</code>
+        <div class="row" style="gap:6px;margin-top:6px"><button type="button" data-copy="${id}">Copy ID</button><button type="button" data-copy="${link}">Copy link</button></div>
+        <small>Keep it – paste it on the start page under “Open a spaceship” to come back.</small>`;
+      box.querySelectorAll("[data-copy]").forEach((b) => b.addEventListener("click", async () => {
+        try { await navigator.clipboard.writeText(b.dataset.copy); b.textContent = "✓ Copied"; }
+        catch (_) { const r = document.createRange(); r.selectNodeContents(b.previousElementSibling || box); b.textContent = "Select & copy"; }
+      }));
+      box.hidden = false;
+    });
     qa(".ck-layers button").forEach((b) => b.addEventListener("click", () => { const k = b.dataset.l; ui.layers[k] = !ui.layers[k]; b.classList.toggle("on", ui.layers[k]); renderSky(); }));
     bindNav();
     const modeBtn = q(".ck-mode");
@@ -1026,5 +1077,7 @@
     ui = null;
   }
 
-  window.SpaceshipLaunch = { mount, unmount };
+  // point the dome at a direction (also used by tests)
+  function look(az, alt, fov) { if (!ui || !ui.cam) return; Object.assign(ui.cam, { az, alt }, fov ? { fov } : {}); renderSky(); }
+  window.SpaceshipLaunch = { mount, unmount, look };
 })();

@@ -147,6 +147,31 @@
     return P;
   }
 
+  // ---------- historic figure layer (al-Ṣūfī) ----------
+  const figImgs = {};
+  function figImage(f, onload) {
+    if (!figImgs[f.src]) { const im = new Image(); im.onload = () => onload && onload(); im.src = f.src; figImgs[f.src] = im; }
+    return figImgs[f.src];
+  }
+  // least-squares affine (image → screen) from anchor stars; the reflection of a "globe" drawing comes out by itself
+  function fitAffine(pairs) {
+    const n = pairs.length; if (n < 3) return null;
+    let Sxx = 0, Sxy = 0, Syy = 0, Sx = 0, Sy = 0, SxX = 0, SyX = 0, SX = 0, SxY = 0, SyY = 0, SY = 0;
+    pairs.forEach(([x, y, X, Y]) => { Sxx += x * x; Sxy += x * y; Syy += y * y; Sx += x; Sy += y; SxX += x * X; SyX += y * X; SX += X; SxY += x * Y; SyY += y * Y; SY += Y; });
+    const M = [[Sxx, Sxy, Sx], [Sxy, Syy, Sy], [Sx, Sy, n]];
+    const solve = (b) => {   // Cramer's rule, 3×3
+      const det = (m) => m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1]) - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0]) + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0]);
+      const D = det(M); if (Math.abs(D) < 1e-9) return null;
+      return [0, 1, 2].map((i) => det(M.map((row, r) => row.map((v, c) => (c === i ? b[r] : v)))) / D);
+    };
+    const px = solve([SxX, SyX, SX]), py = solve([SxY, SyY, SY]);
+    if (!px || !py) return null;
+    return { a: px[0], c: px[1], e: px[2], b: py[0], d: py[1], f: py[2] };
+  }
+  const pip = (pt, poly) => { let ins = false; for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [xi, yi] = poly[i], [xj, yj] = poly[j];
+    if ((yi > pt[1]) !== (yj > pt[1]) && pt[0] < ((xj - xi) * (pt[1] - yi)) / (yj - yi) + xi) ins = !ins; } return ins; };
+
   // ---------- ecliptic → equatorial ----------
   const EPS = 23.4393 * D2R;
   function eclToEq(lonDeg) {
@@ -195,6 +220,31 @@
       });
       g.save(); g.filter = `blur(${Math.round(6 * dpr)}px)`; g.globalCompositeOperation = "lighter"; g.drawImage(mc, 0, 0, W, H); g.restore();
     }
+    // 2b) al-Ṣūfī constellation drawings, fitted onto the real stars
+    info.regions = [];
+    if (L.sufi && window.SpaceshipSufi && cat) {
+      const byHip = cat.hipIndex || (cat.hipIndex = Object.fromEntries(cat.stars.map((st) => [st[7], st])));
+      SpaceshipSufi.figures.forEach((f) => {
+        const pairs = [];
+        f.anchors.forEach(([hip, x, y]) => { const st = byHip[hip]; if (!st) return; const p = proj(HV(st[0], st[1])); if (p) pairs.push([x, y, p[0], p[1]]); });
+        if (pairs.length < f.anchors.length) return;           // part of the figure is behind the viewer
+        const T = fitAffine(pairs); if (!T) return;
+        const im = figImage(f, view.onAsset); if (!im.complete || !im.naturalWidth) return;
+        const s = f.frameW / im.naturalWidth;                 // image px → frame px
+        g.save(); g.globalAlpha = view.figAlpha != null ? view.figAlpha : 0.5;
+        g.setTransform(T.a * s, T.b * s, T.c * s, T.d * s, T.e, T.f); g.drawImage(im, 0, 0); g.restore();
+        const toScr = ([x, y]) => [T.a * x + T.c * y + T.e, T.b * x + T.d * y + T.f];
+        (f.highlights || []).forEach((h) => {
+          const poly = h.poly.map(toScr);
+          g.save(); g.beginPath(); poly.forEach((p, i) => (i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1]))); g.closePath();
+          g.fillStyle = "rgba(255,200,90,.10)"; g.fill();
+          g.shadowColor = "#ffcf6b"; g.shadowBlur = 14 * dpr; g.strokeStyle = "rgba(255,207,107,.85)"; g.lineWidth = 2 * dpr; g.stroke(); g.restore();
+          info.regions.push({ poly, o: { type: "region", id: h.id, name: h.name, html: h.html, x: poly.reduce((a, p) => a + p[0], 0) / poly.length, y: poly.reduce((a, p) => a + p[1], 0) / poly.length } });
+        });
+        info.figure = { title: f.title, caption: f.caption };
+      });
+    }
+    info.regionAt = (x, y) => { const r = info.regions.find((rg) => pip([x, y], rg.poly)); return r ? r.o : null; };
     // helper: polyline through sky directions
     const path = (dirs, style, width, dash) => {
       g.save(); g.strokeStyle = style; g.lineWidth = width * dpr; if (dash) g.setLineDash(dash.map((d) => d * dpr));

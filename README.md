@@ -23,7 +23,7 @@ Turn an apartment into a spaceship: its real outline, its windows, and the view 
 
 In the cockpit (★ SPACE) the open sky in each window photo is replaced by the real sky in that direction: ~5000 stars to magnitude 6 with constellations (d3-celestial data, BSD-3), Sun, Moon and planets (astronomy-engine, MIT), for the building's position and the chosen time (slider ±12 h). View direction = phone compass at the shot (fallback: wall direction), tilt = phone tilt, field of view ≈ phone main camera (53° × 67° portrait).
 
-The cockpit is a full-screen star dome (`web/skydome.js`): stereographic (fisheye but conformal, so star patterns keep their true shape) up to 200° wide. The lower part of the window photo (balcony, sill, facades below the skyline) stays as a stylized anchor – dark blueprint tone with glowing edges – at its true direction and height; open sky and window bars above the skyline are removed. Every 10 s the real photo blends in and out (toggle "Photo blend"). Layers (toggle in the top-left panel): Milky Way, constellation lines, ecliptic, deep-sky objects (110 Messier galaxies, nebulae, clusters), alt/az and RA/Dec grids, names. Drag to look around, scroll/pinch to zoom, double-click to return to the window; the photo thumbnail switches to the original photo projected into the sky.
+The cockpit is a full-screen star dome (`web/skydome.js`): stereographic (fisheye but conformal, so star patterns keep their true shape) up to 200° wide. The lower part of the window photo (balcony, sill, facades below the skyline) stays as a stylized anchor – dark blueprint tone with glowing edges – at its true direction and height; open sky and window bars above the skyline are removed. Every 10 s the real photo blends in and out (toggle "Photo blend"). Layers (toggle in the top-left panel): Milky Way, constellation lines, ecliptic, deep-sky objects (110 Messier galaxies, nebulae, clusters), alt/az and RA/Dec grids, names. al-Ṣūfī layer (`web/sufi.js`): the Orion page of al-Ṣūfī's *Book of the Fixed Stars* (c. 964, globe view) fitted onto the real stars by its labelled stars, with the sword highlighted; star info shows the al-Ṣūfī/Ptolemy number in abjad letters (e.g. كو = 26, Mintaka) and the Arabic name. Tapping an object pins its info box (× or tap empty sky to close). Drag to look around, scroll/pinch to zoom, double-click to return to the window; the photo thumbnail switches to the original photo projected into the sky.
 
 ## Ship composition (200 m scan)
 
@@ -34,3 +34,7 @@ The cockpit is a full-screen star dome (`web/skydome.js`): stereographic (fishey
 - `stats` (0–99): speed, acceleration, turn, tilt, hull, shield, sensors, energy, stealth, lifeSupport, trade.
 - `physics`: engines, mass_t, max_speed, acceleration, turn_rate_deg_s, pitch_rate_deg_s, roll_rate_deg_s, max_tilt_deg, shield_regen_per_s, sensor_range.
 - `capabilities`: bio_dome, hydro, maglev, solar, cloak, panorama, high_orbit, trade_port, academy, sanctuary, arterial – also shown as modules on the pixel ship.
+
+## Reopen a ship
+
+Every saved ship has an ID (shown via 🔑 Ship ID in the cockpit). On the start page, “Open a spaceship” takes an ID or link; ships opened or saved on a device are listed there (localStorage).

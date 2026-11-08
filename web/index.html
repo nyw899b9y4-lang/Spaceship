@@ -265,6 +265,16 @@
   .ck-view canvas.ck-ph.cycle { animation: phcycle 10s ease-in-out infinite; }
   @keyframes phcycle { 0%, 45% { opacity: 0; } 58%, 82% { opacity: .92; } 100% { opacity: 0; } }
   @media (prefers-reduced-motion: reduce) { .ck-view canvas.ck-ph.cycle { animation: none; opacity: 0; } }
+  .ck-tip.pinned { pointer-events: auto; width: 250px; border-color: rgba(255,210,122,.75); box-shadow: 0 0 26px rgba(255,200,90,.25), 0 8px 24px rgba(0,0,0,.5); }
+  .ck-tip-x { position: absolute; top: 4px; right: 6px; width: 24px; height: 24px; padding: 0; border-radius: 50%; border: 0; background: transparent; color: #c9d3f5; font-size: 18px; line-height: 1; cursor: pointer; }
+  .ck-tip .ar { font-family: "Amiri", "Noto Naskh Arabic", "Geeza Pro", "Times New Roman", serif; direction: rtl; unicode-bidi: isolate; font-size: 15px; color: #ffd27a; }
+  .ck-tip .ck-sufi { color: #f3e2b8; margin-top: 2px; } .ck-tip .ck-sufi em { font-style: normal; color: #ffd27a; }
+  .ck-idrow { margin-top: 8px; } .ck-id { font: 600 11px/1 -apple-system, BlinkMacSystemFont, sans-serif; padding: 6px 9px; border-radius: 999px; border: 1px solid rgba(255,210,122,.45); background: rgba(40,30,10,.35); color: #ffd27a; cursor: pointer; }
+  .ck-idbox { margin-top: 8px; display: flex; flex-direction: column; gap: 3px; font-size: 11px; color: #8e98b8; }
+  .ck-idbox code { font: 11px ui-monospace, monospace; color: #dfe6ff; background: rgba(0,0,0,.35); padding: 4px 6px; border-radius: 6px; word-break: break-all; user-select: all; }
+  .ck-idbox button { font-size: 11px; padding: 5px 9px; }
+  .myships { display: flex; flex-direction: column; gap: 6px; }
+  .myship { display: flex; justify-content: space-between; align-items: center; text-align: left; } .myship small { color: var(--muted, #8e98b8); font-size: 11px; margin-left: 8px; }
   .ck-hint { display: block; margin-top: 6px; color: #6f7a9c; font-size: 10px; }
 </style>
 </head>
@@ -285,6 +295,16 @@
       </form>
       <div class="results" id="addr-results"></div>
       <div id="addr-msg"></div>
+    </div>
+    <div class="card" style="margin-top:14px">
+      <h2>🔑 Open a spaceship</h2>
+      <p class="muted">Already built one? Paste its ID or link.</p>
+      <form id="open-form" class="row" style="margin-top:10px">
+        <input type="text" id="open-id" placeholder="Ship ID or link" autocomplete="off" spellcheck="false">
+        <button type="submit">Open</button>
+      </form>
+      <div id="open-msg"></div>
+      <div class="myships" id="myships"></div>
     </div>
   </section>
 
@@ -369,16 +389,17 @@
   <p class="muted" style="font-size:12px;margin-top:24px">Imagery: © swisstopo (Switzerland), © Esri and its data providers (elsewhere). Buildings & search: © OpenStreetMap contributors.</p>
 </main>
 
-<script src="config.js?v=202611081708"></script>
+<script src="config.js?v=202611081733"></script>
 <script src="vendor/leaflet/leaflet.js"></script>
 <script src="vendor/exifr-7.1.3.full.umd.js"></script>
 <script src="vendor/astronomy-engine-2.1.19.min.js"></script>
-<script src="scanfx.js?v=202611081708"></script>
-<script src="sound.js?v=202611081708"></script>
-<script src="compose.js?v=202611081708"></script>
-<script src="sky.js?v=202611081708"></script>
-<script src="skydome.js?v=202611081708"></script>
-<script src="launch.js?v=202611081708"></script>
+<script src="scanfx.js?v=202611081733"></script>
+<script src="sound.js?v=202611081733"></script>
+<script src="compose.js?v=202611081733"></script>
+<script src="sky.js?v=202611081733"></script>
+<script src="skydome.js?v=202611081733"></script>
+<script src="sufi.js?v=202611081733"></script>
+<script src="launch.js?v=202611081733"></script>
 <script>
 "use strict";
 const cfg = window.SPACESHIP_CONFIG || {};
@@ -854,6 +875,7 @@ $("send").addEventListener("click", async () => {
     const link = location.origin + location.pathname + "?ship=" + id;
     notice(msg, "ok", `✓ Saved – your spaceship is registered.<br>Your spaceship link (keep it – it opens your ship any time):<br><a style="color:var(--ok)" href="${link}">${link}</a>`);
     try { history.replaceState(null, "", "?ship=" + id); } catch (_) {}
+    state.loadedId = id; rememberShip(id, state.address.label);
     state.savedLink = link;
     setTimeout(() => show(5), 1800);
   } catch (e) {
@@ -878,7 +900,8 @@ async function loadShip(id) {
     state.windows = (a.windows || []).map((w) => ({ id: "w" + w.n, label: w.label || "", lat: w.lat, lon: w.lon,
       wall_azimuth_deg: w.wall_azimuth_deg, source: w.placed_by, capture: w.capture,
       photo: w.photo_path ? { url: photoUrl(w.photo_path) } : null }));
-    state.loadedId = id;
+    state.loadedId = id; rememberShip(id, a.address);
+    try { history.replaceState(null, "", "?ship=" + id); } catch (_) {}
     $("floor").value = a.floor || 0;
     $("addr-msg").className = ""; $("addr-msg").innerHTML = "";
     $("launch-back").hidden = true; $("build-own").hidden = false;
@@ -890,6 +913,29 @@ async function loadShip(id) {
     notice($("addr-msg"), "err", "Could not open this spaceship: " + esc(e.message) + ". You can build a new one below.");
   }
 }
+// ---------------- my ships on this device + open by ID ----------------
+function myShips() { try { return JSON.parse(localStorage.getItem("spaceship.ships") || "[]"); } catch (_) { return []; } }
+function rememberShip(id, address) {
+  try {
+    const list = myShips().filter((x) => x.id !== id);
+    list.unshift({ id, address: address || "", at: new Date().toISOString() });
+    localStorage.setItem("spaceship.ships", JSON.stringify(list.slice(0, 20)));
+  } catch (_) {}
+  renderMyShips();
+}
+function renderMyShips() {
+  const el = $("myships"), list = myShips(); if (!el) return;
+  el.innerHTML = list.length ? `<p class="muted" style="margin:12px 0 6px;font-size:13px">On this device:</p>` +
+    list.map((x) => `<button type="button" class="secondary small myship" data-id="${esc(x.id)}">🚀 ${esc((x.address || "Spaceship").split(/,/)[0])}<small>${esc(x.id.slice(0, 8))}… · ${new Date(x.at).toLocaleDateString()}</small></button>`).join("") : "";
+  el.querySelectorAll(".myship").forEach((b) => b.addEventListener("click", () => loadShip(b.dataset.id)));
+}
+$("open-form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const m = $("open-id").value.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+  if (!m) { notice($("open-msg"), "err", "That doesn't look like a ship ID (it has the form xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)."); return; }
+  $("open-msg").innerHTML = ""; loadShip(m[0].toLowerCase());
+});
+renderMyShips();
 const shipParam = new URLSearchParams(location.search).get("ship");
 if (shipParam && backendReady) loadShip(shipParam); else show(1);
 </script>
