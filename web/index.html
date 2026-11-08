@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b1020">
+<title>Spaceship</title>
+<style>
+  :root {
+    --bg: #0b1020; --card: #141a2e; --line: #252d48; --text: #e8ecf8; --muted: #8e98b8;
+    --accent: #7aa2ff; --ok: #4ade80; --warn: #fbbf24; --err: #f87171;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
+  }
+  main { max-width: 560px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 28px; margin: 8px 0 4px; letter-spacing: -0.02em; }
+  .lead { color: var(--muted); margin: 0 0 20px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 16px; margin: 12px 0; }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .card h2 { font-size: 17px; margin: 0; }
+  .card p { margin: 4px 0 0; color: var(--muted); font-size: 14px; }
+  .status { font-size: 13px; color: var(--muted); white-space: nowrap; }
+  .status.ok { color: var(--ok); } .status.err { color: var(--err); }
+  button, .btn {
+    appearance: none; border: 0; border-radius: 12px; padding: 10px 16px; font: inherit; font-weight: 600;
+    background: var(--accent); color: #0b1020; cursor: pointer; white-space: nowrap;
+  }
+  button.secondary, .btn.secondary { background: transparent; color: var(--accent); border: 1px solid var(--line); }
+  button:disabled { opacity: .45; cursor: default; }
+  .data { margin-top: 12px; font: 13px/1.6 ui-monospace, Menlo, monospace; color: var(--text); word-break: break-word; }
+  .data:empty { display: none; }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; text-align: center; }
+  .grid div { background: var(--bg); border-radius: 10px; padding: 8px 4px; }
+  .grid b { display: block; font-size: 18px; }
+  .grid span { font-size: 11px; color: var(--muted); }
+  img.preview { width: 100%; border-radius: 12px; margin-top: 12px; display: block; }
+  textarea { width: 100%; margin-top: 10px; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 10px; padding: 10px; font: inherit; resize: vertical; }
+  label.consent { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; color: var(--muted); margin: 16px 0; }
+  label.consent input { margin-top: 3px; width: 18px; height: 18px; accent-color: var(--accent); }
+  #send { width: 100%; padding: 14px; font-size: 17px; }
+  .notice { overflow-wrap: anywhere; font-size: 13px; padding: 10px 12px; border-radius: 10px; margin-top: 12px; }
+  .notice.info { background: #1d2540; color: var(--muted); }
+  .notice.ok { background: #12301f; color: var(--ok); }
+  .notice.err { background: #3a1717; color: var(--err); }
+  input[type=file] { display: none; }
+</style>
+</head>
+<body>
+<main>
+  <h1>🚀 Spaceship</h1>
+  <p class="lead">Share data from your device – on any phone, tablet or computer. Each item is optional and only collected when you tap it.</p>
+
+  <section class="card" id="loc-card">
+    <div class="row">
+      <div><h2>📍 Location</h2><p>Your position from GPS / network.</p></div>
+      <button id="loc-btn">Get location</button>
+    </div>
+    <div class="data" id="loc-data"></div>
+  </section>
+
+  <section class="card" id="motion-card">
+    <div class="row">
+      <div><h2>🧭 Motion sensors</h2><p>Tilt, compass and acceleration – recorded for 3 seconds.</p></div>
+      <button id="motion-btn">Record</button>
+    </div>
+    <div class="data" id="motion-data"></div>
+  </section>
+
+  <section class="card" id="photo-card">
+    <div class="row">
+      <div><h2>📷 Photo or file</h2><p>Take a photo or choose an image.</p></div>
+      <label class="btn" for="photo-input">Choose</label>
+      <input id="photo-input" type="file" accept="image/*">
+    </div>
+    <div class="data" id="photo-data"></div>
+    <img class="preview" id="photo-preview" alt="" hidden>
+  </section>
+
+  <section class="card">
+    <h2>✏️ Note <span class="status">(optional)</span></h2>
+    <textarea id="note" rows="2" maxlength="500" placeholder="Anything to add?"></textarea>
+  </section>
+
+  <label class="consent">
+    <input type="checkbox" id="consent">
+    <span>I agree that the data collected above is sent to and stored by the Spaceship project.</span>
+  </label>
+  <button id="send" disabled>Send</button>
+  <div id="send-msg"></div>
+</main>
+
+<script src="config.js"></script>
+<script>
+const cfg = window.SPACESHIP_CONFIG || {};
+const backendReady = Boolean(cfg.SUPABASE_URL && cfg.SUPABASE_KEY);
+const $ = (id) => document.getElementById(id);
+const state = { location: null, motion: null, photo: null };
+const r = (v, d = 2) => (v == null || isNaN(v) ? null : Number(v.toFixed(d)));
+
+function setNotice(el, type, text) { el.className = "notice " + type; el.textContent = text; }
+function refreshSend() {
+  const hasData = state.location || state.motion || state.photo || $("note").value.trim();
+  $("send").disabled = !($("consent").checked && hasData);
+}
+$("consent").addEventListener("change", refreshSend);
+$("note").addEventListener("input", refreshSend);
+
+if (!backendReady) setNotice($("send-msg"), "info", "Preview mode: the page works, but sending is not connected yet.");
+
+// ---------- Location ----------
+$("loc-btn").addEventListener("click", () => {
+  if (!("geolocation" in navigator)) { $("loc-data").textContent = "Location is not available on this device."; return; }
+  $("loc-btn").disabled = true; $("loc-data").textContent = "Waiting for permission and a position fix…";
+  navigator.geolocation.getCurrentPosition((pos) => {
+    const c = pos.coords;
+    state.location = {
+      lat: c.latitude, lon: c.longitude, accuracy_m: r(c.accuracy, 1),
+      altitude_m: r(c.altitude, 1), heading_deg: r(c.heading, 1), speed_mps: r(c.speed, 2),
+      time: new Date(pos.timestamp).toISOString(),
+    };
+    $("loc-data").innerHTML = `${c.latitude.toFixed(5)}, ${c.longitude.toFixed(5)}<br>± ${Math.round(c.accuracy)} m` +
+      (c.altitude != null ? ` · altitude ${Math.round(c.altitude)} m` : "");
+    $("loc-btn").textContent = "Update"; $("loc-btn").disabled = false; refreshSend();
+  }, (err) => {
+    $("loc-data").textContent = err.code === 1 ? "Permission denied. You can allow location in your browser settings." : "Could not get a position: " + err.message;
+    $("loc-btn").disabled = false;
+  }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 });
+});
+
+// ---------- Motion sensors ----------
+async function askMotionPermission() {
+  // iPhone/iPad Safari require an explicit permission request from a tap
+  const needs = (C) => C && typeof C.requestPermission === "function";
+  if (needs(window.DeviceMotionEvent) && (await DeviceMotionEvent.requestPermission()) !== "granted") return false;
+  if (needs(window.DeviceOrientationEvent) && (await DeviceOrientationEvent.requestPermission()) !== "granted") return false;
+  return true;
+}
+$("motion-btn").addEventListener("click", async () => {
+  if (!("DeviceMotionEvent" in window) && !("DeviceOrientationEvent" in window)) {
+    $("motion-data").textContent = "This device has no motion sensors available to the browser."; return;
+  }
+  $("motion-btn").disabled = true;
+  try {
+    if (!(await askMotionPermission())) { $("motion-data").textContent = "Permission denied."; $("motion-btn").disabled = false; return; }
+  } catch (e) { $("motion-data").textContent = "Permission request failed: " + e.message; $("motion-btn").disabled = false; return; }
+
+  const samples = []; let last = {};
+  const onOrient = (e) => { last.alpha = e.webkitCompassHeading ?? e.alpha; last.beta = e.beta; last.gamma = e.gamma; };
+  const onMotion = (e) => {
+    const a = e.accelerationIncludingGravity || {};
+    samples.push({ t: Math.round(performance.now()), ax: r(a.x), ay: r(a.y), az: r(a.z),
+      heading: r(last.alpha, 1), tilt_front: r(last.beta, 1), tilt_side: r(last.gamma, 1) });
+    render();
+  };
+  const render = () => {
+    const s = samples[samples.length - 1] || {};
+    $("motion-data").innerHTML = `<div class="grid">
+      <div><b>${s.heading ?? "–"}°</b><span>heading</span></div>
+      <div><b>${s.tilt_front ?? "–"}°</b><span>tilt front/back</span></div>
+      <div><b>${s.tilt_side ?? "–"}°</b><span>tilt left/right</span></div>
+      <div><b>${s.ax ?? "–"}</b><span>accel x m/s²</span></div>
+      <div><b>${s.ay ?? "–"}</b><span>accel y m/s²</span></div>
+      <div><b>${s.az ?? "–"}</b><span>accel z m/s²</span></div></div>`;
+  };
+  window.addEventListener("deviceorientation", onOrient);
+  window.addEventListener("devicemotion", onMotion);
+  $("motion-btn").textContent = "Recording…";
+  setTimeout(() => {
+    window.removeEventListener("deviceorientation", onOrient);
+    window.removeEventListener("devicemotion", onMotion);
+    $("motion-btn").disabled = false; $("motion-btn").textContent = "Record again";
+    if (!samples.length) { $("motion-data").textContent = "No sensor readings received – this device may not have motion sensors."; return; }
+    const t0 = samples[0].t;
+    // keep at most 60 samples (~20 per second) to keep submissions small
+    const step = Math.max(1, Math.ceil(samples.length / 60));
+    state.motion = { duration_s: 3, sample_count: samples.length,
+      samples: samples.filter((_, i) => i % step === 0).map((s) => ({ ...s, t: s.t - t0 })) };
+    $("motion-data").insertAdjacentHTML("beforeend", `<div style="margin-top:8px;color:var(--ok)">✓ ${samples.length} readings recorded</div>`);
+    refreshSend();
+  }, 3000);
+});
+
+// ---------- Photo ----------
+async function shrinkImage(file, maxSide = 1600) {
+  const bmp = await createImageBitmap(file, { imageOrientation: "from-image" }).catch(() => null);
+  if (!bmp) return file; // unsupported format: send as is
+  const scale = Math.min(1, maxSide / Math.max(bmp.width, bmp.height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(bmp.width * scale); canvas.height = Math.round(bmp.height * scale);
+  canvas.getContext("2d").drawImage(bmp, 0, 0, canvas.width, canvas.height);
+  return await new Promise((res) => canvas.toBlob(res, "image/jpeg", 0.85));
+}
+$("photo-input").addEventListener("change", async (e) => {
+  const file = e.target.files[0]; if (!file) return;
+  if (file.size > 25 * 1024 * 1024) { $("photo-data").textContent = "File is too large (max 25 MB)."; return; }
+  $("photo-data").textContent = "Preparing…";
+  const blob = await shrinkImage(file);
+  state.photo = { blob, name: file.name };
+  $("photo-preview").src = URL.createObjectURL(blob); $("photo-preview").hidden = false;
+  $("photo-data").textContent = `${file.name} · ${(blob.size / 1024).toFixed(0)} KB`;
+  refreshSend();
+});
+
+// ---------- Send ----------
+function headers(extra) {
+  const h = { apikey: cfg.SUPABASE_KEY, ...extra };
+  if (cfg.SUPABASE_KEY.startsWith("eyJ")) h.Authorization = "Bearer " + cfg.SUPABASE_KEY; // legacy anon JWT key
+  return h;
+}
+$("send").addEventListener("click", async () => {
+  const msg = $("send-msg");
+  const note = $("note").value.trim() || null;
+  if (!backendReady) {
+    setNotice(msg, "info", "Preview mode – this would be sent: " +
+      JSON.stringify({ location: state.location, motion: state.motion ? `${state.motion.sample_count} readings` : null,
+                       photo: state.photo ? state.photo.name : null, note }));
+    return;
+  }
+  $("send").disabled = true; setNotice(msg, "info", "Sending…");
+  try {
+    let photo_path = null;
+    if (state.photo) {
+      photo_path = `${new Date().toISOString().slice(0, 10)}/${crypto.randomUUID()}.jpg`;
+      const up = await fetch(`${cfg.SUPABASE_URL}/storage/v1/object/${cfg.PHOTO_BUCKET}/${photo_path}`, {
+        method: "POST", headers: headers({ "Content-Type": state.photo.blob.type || "image/jpeg" }), body: state.photo.blob });
+      if (!up.ok) throw new Error("photo upload failed (" + up.status + ")");
+    }
+    const res = await fetch(`${cfg.SUPABASE_URL}/rest/v1/${cfg.TABLE}`, {
+      method: "POST", headers: headers({ "Content-Type": "application/json", Prefer: "return=minimal" }),
+      body: JSON.stringify({ location: state.location, motion: state.motion, photo_path, note }) });
+    if (!res.ok) throw new Error("saving failed (" + res.status + ")");
+    setNotice(msg, "ok", "✓ Sent – thank you!");
+  } catch (e) {
+    setNotice(msg, "err", "Could not send: " + e.message + ". Please try again.");
+    $("send").disabled = false;
+  }
+});
+</script>
+</body>
+</html>

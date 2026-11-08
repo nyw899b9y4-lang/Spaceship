@@ -1,16 +1,16 @@
 # Spaceship
 
-A minimal Android app — **Hello, World!** · Android 17 · Jetpack Compose
+Share data from any device – phone, tablet or computer – through the browser. No app install.
 
-## Download
+## Open
 
-**[⬇️ HelloWorld.apk](https://github.com/nyw899b9y4-lang/Spaceship/releases/latest/download/HelloWorld.apk)**
+**[🚀 nyw899b9y4-lang.github.io/Spaceship](https://nyw899b9y4-lang.github.io/Spaceship/)**
 
-Open the link on your Android phone, open the file, allow *install unknown apps* if asked, and tap **Install**.
+Visitors can send their **location**, **motion sensor readings** and a **photo**. Each is optional, asked for with the device's own permission prompt, and sent only after they agree.
 
-## Development environment
+## Environment
 
-- **Android Studio** (Panda 3 or newer) with the **Android 17 / API 37** SDK
-- Open this folder → **▶ Run** on an emulator or a USB-connected phone
-- Live preview: open `MainActivity.kt` in *Split* view
-- Every push to `main` builds the APK, runs it in an emulator and publishes a new [release](https://github.com/nyw899b9y4-lang/Spaceship/releases)
+- `web/` – the homepage (plain HTML/JS), published to GitHub Pages on every push
+- `web/config.js` – backend connection (Supabase URL + publishable key)
+- `backend/supabase-setup.sql` – creates the `submissions` table and private `photos` bucket; visitors can only add data, never read it
+- Submissions are viewed in the Supabase dashboard (Table Editor → `submissions`, Storage → `photos`)
