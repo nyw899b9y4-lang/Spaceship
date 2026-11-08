@@ -286,13 +286,28 @@ function initMap(lat, lon) {
   renderWindows();
 }
 let buildingsNearby = [];
+// Ask several public Overpass (OpenStreetMap) servers at once and take the first good answer
+const OVERPASS = ["https://overpass-api.de/api/interpreter", "https://overpass.private.coffee/api/interpreter",
+                  "https://maps.mail.ru/osm/tools/overpass/api/interpreter"];
+async function overpass(q) {
+  const ctrls = OVERPASS.map(() => new AbortController());
+  const timer = setTimeout(() => ctrls.forEach((c) => c.abort()), 45000);
+  try {
+    return await Promise.any(OVERPASS.map(async (url, i) => {
+      const res = await fetch(url, { method: "POST", body: "data=" + encodeURIComponent(q), signal: ctrls[i].signal,
+        headers: { "Content-Type": "application/x-www-form-urlencoded" } });
+      if (!res.ok) throw new Error(res.status);
+      const j = await res.json();
+      ctrls.forEach((c, k) => k !== i && c.abort());
+      return j;
+    }));
+  } finally { clearTimeout(timer); }
+}
 async function loadBuildings(lat, lon) {
-  $("map-hint").textContent = "Loading the building outline…";
+  $("map-hint").innerHTML = "Loading the building outline… <span class='muted'>(can take up to half a minute)</span>";
   const q = `[out:json][timeout:20];way["building"](around:60,${lat},${lon});out geom tags;`;
   try {
-    const res = await fetch("https://overpass-api.de/api/interpreter", { method: "POST", body: "data=" + encodeURIComponent(q),
-      headers: { "Content-Type": "application/x-www-form-urlencoded" } });
-    const j = await res.json();
+    const j = await overpass(q);
     buildingsNearby = (j.elements || []).filter((e) => e.geometry && e.geometry.length > 3).map((e) => ({
       osm_id: e.id, ring: e.geometry.map((g) => [g.lat, g.lon]),
       levels: Number(e.tags && e.tags["building:levels"]) || null, height: parseFloat(e.tags && e.tags.height) || null,
