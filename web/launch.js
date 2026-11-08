@@ -453,7 +453,7 @@
     if (comp > 0 && comp < 1 && res && res.satellite) {
       if (!it.parts) {
         it.parts = []; const sh = res.satellite.share;
-        CAT.slice(0, 5).forEach(([k]) => { const n = Math.round(sh[k] * 160); for (let i = 0; i < n; i++) {
+        CAT.slice(0, 5).forEach(([k]) => { const n = Math.round(sh[k] * 420); for (let i = 0; i < n; i++) {
           const a = Math.random() * 2 * Math.PI, r = Math.sqrt(Math.random()) * 0.95 + 0.05;
           it.parts.push({ k, a, r, d: Math.random() * 0.35 }); } });
       }
@@ -462,7 +462,9 @@
         const q = Math.min(1, Math.max(0, (comp - p.d) / (1 - p.d))), e = q * q;
         const r = p.r * (1 - e) * RR, a = p.a + e * 1.2, c = SpaceshipCompose.CLASS[p.k];
         g.fillStyle = `rgba(${c.join(",")},${0.9 * (1 - e * 0.5)})`;
-        g.fillRect(CX + Math.cos(a) * r - K / 2, CY + Math.sin(a) * r - K / 2, K * 1.2, K * 1.2);
+        const sz = K * (2.2 - e * 0.8);
+        g.shadowColor = g.fillStyle; g.shadowBlur = K * 2;
+        g.fillRect(CX + Math.cos(a) * r - sz / 2, CY + Math.sin(a) * r - sz / 2, sz, sz);
       });
       g.restore();
     }
