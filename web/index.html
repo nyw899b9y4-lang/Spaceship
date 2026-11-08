@@ -323,11 +323,15 @@
         <button class="grow secondary" id="cam-retake" hidden>Retake</button>
       </div>
       <div class="row" style="margin-top:8px">
-        <label class="btn secondary grow" for="cam-file" style="text-align:center;background:transparent;color:var(--accent);border:1px solid var(--line)">Upload a photo instead</label>
-        <input id="cam-file" type="file" accept="image/*" hidden>
+        <label class="btn secondary grow" for="cam-file" style="text-align:center;background:transparent;color:var(--accent);border:1px solid var(--line)">Upload photo(s) instead</label>
+        <input id="cam-file" type="file" accept="image/*" multiple hidden>
       </div>
       <div class="thumbs" id="thumbs"></div>
-      <button class="wide" id="cam-next" disabled>Next window</button>
+      <p class="hint" style="margin:10px 0 0">Several photos at once? Select them together – they are assigned to this window and the following ones in order.</p>
+      <div class="row" style="margin-top:12px;gap:8px">
+        <button class="grow secondary" id="cam-next" disabled>Next window ›</button>
+        <button class="grow" id="cam-done" disabled>✓ Done – review &amp; save</button>
+      </div>
       <button class="secondary small" style="margin-top:10px" data-back="2">← Back to map</button>
     </div>
   </section>
@@ -343,8 +347,8 @@
         <input type="checkbox" id="consent">
         <span>I agree that my address, the window positions, the photos and the sensor readings are sent to and stored by the Spaceship project.</span>
       </label>
-      <button class="wide" id="launch-btn">🚀 Launch spaceship view</button>
-      <button class="wide secondary" id="send" disabled>Send</button>
+      <button class="wide" id="send" disabled>💾 Save &amp; launch my spaceship</button>
+      <button class="secondary small" id="launch-btn" style="margin-top:8px">Just preview without saving</button>
       <div id="send-msg"></div>
       <button class="secondary small" style="margin-top:10px" data-back="3">← Back to photos</button>
     </div>
@@ -365,16 +369,16 @@
   <p class="muted" style="font-size:12px;margin-top:24px">Imagery: © swisstopo (Switzerland), © Esri and its data providers (elsewhere). Buildings & search: © OpenStreetMap contributors.</p>
 </main>
 
-<script src="config.js?v=202611081654"></script>
+<script src="config.js?v=202611081708"></script>
 <script src="vendor/leaflet/leaflet.js"></script>
 <script src="vendor/exifr-7.1.3.full.umd.js"></script>
 <script src="vendor/astronomy-engine-2.1.19.min.js"></script>
-<script src="scanfx.js?v=202611081654"></script>
-<script src="sound.js?v=202611081654"></script>
-<script src="compose.js?v=202611081654"></script>
-<script src="sky.js?v=202611081654"></script>
-<script src="skydome.js?v=202611081654"></script>
-<script src="launch.js?v=202611081654"></script>
+<script src="scanfx.js?v=202611081708"></script>
+<script src="sound.js?v=202611081708"></script>
+<script src="compose.js?v=202611081708"></script>
+<script src="sky.js?v=202611081708"></script>
+<script src="skydome.js?v=202611081708"></script>
+<script src="launch.js?v=202611081708"></script>
 <script>
 "use strict";
 const cfg = window.SPACESHIP_CONFIG || {};
@@ -706,7 +710,15 @@ $("cam-shoot").addEventListener("click", async () => {
 });
 $("cam-retake").addEventListener("click", () => { const w = state.windows[state.camIndex]; delete w.photo; delete w.capture; startCamera(); renderThumbs(); });
 $("cam-file").addEventListener("change", async (e) => {
-  const file = e.target.files[0]; e.target.value = ""; if (!file) return;
+  const files = Array.from(e.target.files || []); e.target.value = ""; if (!files.length) return;
+  const start = state.camIndex;
+  for (let k = 0; k < files.length && start + k < state.windows.length; k++) {
+    state.camIndex = start + k; await useUpload(files[k]);
+  }
+  if (files.length > state.windows.length - start) notice($("cam-msg"), "info", `${files.length} photos selected, but only ${state.windows.length - start} window(s) left – the extra photos were ignored. Add more windows on the map to use them.`);
+  stopCamera(); openWindow(state.camIndex);
+});
+async function useUpload(file) {
   let meta = null;
   try { meta = await exifr.parse(file, { gps: true, exif: true, tiff: true, xmp: false, icc: false, iptc: false }); } catch (_) {}
   const blob = await shrinkImage(file);
@@ -719,8 +731,7 @@ $("cam-file").addEventListener("change", async (e) => {
     image_direction_deg: Number.isFinite(meta.GPSImgDirection) ? r(meta.GPSImgDirection, 1) : null,
     lat: Number.isFinite(meta.latitude) ? meta.latitude : null, lon: Number.isFinite(meta.longitude) ? meta.longitude : null,
   } : null });
-  stopCamera(); showShot(w);
-});
+}
 async function shrinkImage(file, maxSide = 2000) {
   const bmp = await createImageBitmap(file, { imageOrientation: "from-image" }).catch(() => null);
   if (!bmp) return file;
@@ -770,12 +781,14 @@ function renderThumbs() {
 }
 function updateCamNext() {
   const last = state.camIndex >= state.windows.length - 1, done = state.windows.filter((w) => w.photo).length;
-  $("cam-next").disabled = !state.windows[state.camIndex].photo;
-  $("cam-next").textContent = last ? `Review (${done}/${state.windows.length} photos)` : "Next window";
+  $("cam-next").disabled = false;
+  $("cam-next").hidden = last;
+  $("cam-next").textContent = `Next window (${state.camIndex + 2} of ${state.windows.length}) ›`;
+  $("cam-done").disabled = done === 0;
+  $("cam-done").textContent = `✓ Done – review & save (${done}/${state.windows.length} photos)`;
 }
-$("cam-next").addEventListener("click", () => {
-  if (state.camIndex < state.windows.length - 1) openWindow(state.camIndex + 1); else show(4);
-});
+$("cam-next").addEventListener("click", () => { if (state.camIndex < state.windows.length - 1) openWindow(state.camIndex + 1); });
+$("cam-done").addEventListener("click", () => { stopCamera(); show(4); });
 
 // ---------------- STEP 4: summary + send ----------------
 let map2, sumLayers, sumWins;
@@ -800,7 +813,11 @@ function buildSummary() {
 }
 $("consent").addEventListener("change", refreshSend);
 $("launch-btn").addEventListener("click", () => show(5));
-function refreshSend() { $("send").disabled = !($("consent").checked && state.windows.some((w) => w.photo)); }
+function refreshSend() {
+  const photos = state.windows.some((w) => w.photo), ok = $("consent").checked && photos;
+  $("send").disabled = !ok;
+  $("send").textContent = !photos ? "Add at least one window photo first" : $("consent").checked ? "💾 Save & launch my spaceship" : "Tick the box above to save";
+}
 function headers(extra) {
   const h = { apikey: cfg.SUPABASE_KEY, ...extra };
   if (cfg.SUPABASE_KEY.startsWith("eyJ")) h.Authorization = "Bearer " + cfg.SUPABASE_KEY;
@@ -835,7 +852,10 @@ $("send").addEventListener("click", async () => {
       method: "POST", headers: headers({ "Content-Type": "application/json", Prefer: "return=minimal" }), body: JSON.stringify(payload(id, paths)) });
     if (!res.ok) throw new Error("saving failed (" + res.status + ")");
     const link = location.origin + location.pathname + "?ship=" + id;
-    notice(msg, "ok", `✓ Sent – your spaceship is registered. Tap 🚀 Launch to see it.<br>Your spaceship link (keep it – it opens your ship any time):<br><a style="color:var(--ok)" href="${link}">${link}</a>`);
+    notice(msg, "ok", `✓ Saved – your spaceship is registered.<br>Your spaceship link (keep it – it opens your ship any time):<br><a style="color:var(--ok)" href="${link}">${link}</a>`);
+    try { history.replaceState(null, "", "?ship=" + id); } catch (_) {}
+    state.savedLink = link;
+    setTimeout(() => show(5), 1800);
   } catch (e) {
     notice(msg, "err", "Could not send: " + esc(e.message) + ". Please try again."); $("send").disabled = false;
   }
