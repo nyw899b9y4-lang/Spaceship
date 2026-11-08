@@ -73,19 +73,35 @@
     const rows = {};
     mask.forEach((k) => { const [x, y] = k.split(",").map(Number); (rows[y] = rows[y] || []).push(x); });
     const midY = Math.round((gy0 + gy1) / 2);
-    mask.forEach((k) => {
-      const [x, y] = k.split(",").map(Number);
-      const edge = !has(x - 1, y) || !has(x + 1, y) || !has(x, y - 1) || !has(x, y + 1);
-      if (edge) return put(x, y, PAL.outline);
-      const top = !has(x, y - 2), bottom = !has(x, y + 2), left = !has(x - 2, y);
-      let c = y < midY ? PAL.hullLight : PAL.hull;
-      if (top || left) c = PAL.hullHi;
-      else if (bottom) c = PAL.hullDark;
-      else if ((x - gx0) % 14 === 0 && Math.abs(y - midY) > 1) c = PAL.panel;    // panel seams
-      else if (y === midY && (x - gx0) % 14 > 2) c = PAL.stripe;                  // racing stripe
-      else if ((x - gx0) % 14 === 3 && (y - gy0) % 6 === 3) c = PAL.rivet;        // rivet rows
-      put(x, y, c);
-    });
+    // roof → hull: with the satellite roof brightness (lumAt) the real roof features become hull shading
+    const ROOF = [PAL.outline, PAL.hullDark, PAL.panel, PAL.hull, PAL.hullLight, PAL.hullHi];
+    const BAYER = [[0, 2], [3, 1]];
+    function paintHull(lumAt) {
+      mask.forEach((k) => {
+        const [x, y] = k.split(",").map(Number);
+        const edge = !has(x - 1, y) || !has(x + 1, y) || !has(x, y - 1) || !has(x, y + 1);
+        if (edge) return put(x, y, PAL.outline);
+        const top = !has(x, y - 2), bottom = !has(x, y + 2), left = !has(x - 2, y);
+        let c;
+        if (lumAt) {
+          const l = lumAt(x, y);                                         // 0..1, normalised over the roof
+          const v = l * (ROOF.length - 1.01) + (BAYER[y & 1][x & 1] / 4 - 0.375) * 0.9;   // ordered dithering
+          c = ROOF[Math.max(1, Math.min(ROOF.length - 1, Math.floor(v + 0.5)))];
+          if (top || left) c = l > 0.35 ? PAL.hullHi : PAL.hullLight;
+          else if (bottom) c = PAL.hullDark;
+          else if (y === midY && (x - gx0) % 14 > 2 && l > 0.3) c = PAL.stripe;
+        } else {
+          c = y < midY ? PAL.hullLight : PAL.hull;
+          if (top || left) c = PAL.hullHi;
+          else if (bottom) c = PAL.hullDark;
+          else if ((x - gx0) % 14 === 0 && Math.abs(y - midY) > 1) c = PAL.panel;    // panel seams
+          else if (y === midY && (x - gx0) % 14 > 2) c = PAL.stripe;                  // racing stripe
+          else if ((x - gx0) % 14 === 3 && (y - gy0) % 6 === 3) c = PAL.rivet;        // rivet rows
+        }
+        put(x, y, c);
+      });
+    }
+    paintHull(null);
     // engines on the rear (left) edge
     // only rows whose hull starts at the rear edge get an engine
     const minCol = Math.min(...Object.values(rows).map((r) => Math.min(...r)));
@@ -105,13 +121,14 @@
     });
     // canopy near the nose (right end)
     const nr = rows[midY] || rows[midY + 1];
-    if (nr) {
+    const paintCanopy = () => { if (nr) {
       const nx = Math.max(...nr) - 9;
       for (let dy = -2; dy <= 2; dy++) for (let dx = -4; dx <= 4; dx++) {
         if ((dx * dx) / 20 + (dy * dy) / 5 <= 1 && has(nx + dx, midY + dy) && has(nx + dx + 2, midY + dy))
           put(nx + dx, midY + dy, dx > 1 && dy < 0 ? PAL.glassHi : PAL.glass);
       }
-    }
+    } };
+    paintCanopy();
     // windows → ports + turrets (real view directions rotated into ship frame)
     const ports = st.windows.map((w, i) => {
       const [x, y] = rot(localXY(w.lat, w.lon, ref));
@@ -124,9 +141,24 @@
       }
       return { i, x: px, y: py, dir, az };
     });
-    ports.forEach((p) => {
+    const paintTurrets = () => ports.forEach((p) => {
       if (p.dir) for (let s = 1; s <= 4; s++) put(Math.round(p.x + p.dir[0] * s), Math.round(p.y + p.dir[1] * s), s === 4 ? PAL.metalLight : PAL.metal);
     });
+    paintTurrets();
+    // re-skin the hull from the real roof (satellite canvas aligned to the ship pixels)
+    const reskin = (groundCanvas) => {
+      try {
+        const sm = document.createElement("canvas"); sm.width = W; sm.height = H;
+        const sg = sm.getContext("2d"); sg.imageSmoothingEnabled = true; sg.drawImage(groundCanvas, 0, 0, W, H);
+        const d = sg.getImageData(0, 0, W, H).data, L = (x, y) => { const i = (y * W + x) * 4; return 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]; };
+        const vals = []; mask.forEach((k) => { const [x, y] = k.split(",").map(Number); vals.push(L(x, y)); });
+        vals.sort((a, b) => a - b);
+        const lo = vals[Math.floor(vals.length * 0.04)], hi = vals[Math.floor(vals.length * 0.96)] || lo + 1;
+        paintHull((x, y) => Math.max(0, Math.min(1, (L(x, y) - lo) / (hi - lo || 1))));
+        paintCanopy(); paintTurrets();
+        return true;
+      } catch (_) { return false; }   // satellite image not readable (no CORS) → keep the plain hull
+    };
     // exact (unrounded) transforms between lat/lon and ship pixels, used by the satellite intro
     const llToPx = (lat, lon) => {
       const [x, y] = rot(localXY(lat, lon, ref));
@@ -138,7 +170,7 @@
       return [ref[0] + (y / 6371008.8) * R2D, ref[1] + (x / (6371008.8 * Math.cos(ref[0] * D2R))) * R2D];
     };
     return { sprite: cv, ports, engines, theta, ringPx: poly, northUp: [Math.sin(theta), -Math.cos(theta)], gy0, gy1,
-             llToPx, pxToLL, scale, ref };
+             llToPx, pxToLL, scale, ref, reskin };
   }
 
   // ---------- take-off intro: satellite image → pixel hull → lift-off ----------
@@ -201,7 +233,10 @@
     const sil = document.createElement("canvas"); sil.width = W; sil.height = H;
     const sg = sil.getContext("2d"); sg.drawImage(ship.sprite, 0, 0); sg.globalCompositeOperation = "source-in";
     sg.fillStyle = "#000"; sg.fillRect(0, 0, W, H); intro.silhouette = sil;
-    buildGround(cur, ship).then((c) => { if (intro) { intro.ground = c; intro.ready = true; } });
+    (ui.groundP || (ui.groundP = buildGround(cur, ship))).then((c) => {
+      if (!ship.reskinned) { ship.reskinned = true; ship.reskin(c); }
+      if (intro) { intro.ground = c; intro.ready = true; }
+    });
   }
   function drawIntro(ts) {
     const it = intro; if (!it || !it.ready) return;
@@ -458,7 +493,8 @@
     ship = buildShip(st); initStars(); lasers = []; active = 0;
     selectWindow(0, st);
     // origin inset: the real building from above with its outline – stays visible during flight
-    buildGround(st, ship).then((gcv) => {
+    startIntro();
+    ui.groundP.then((gcv) => {
       if (!ui) return;
       const o = ui.q(".lv-origin"), og = o.getContext("2d");
       og.drawImage(gcv, 0, 0, o.width, o.height);
@@ -466,7 +502,6 @@
       o.classList.add("on");
     });
     q(".lv-replay").addEventListener("click", startIntro);
-    startIntro();
     t0 = performance.now(); cancelAnimationFrame(raf); raf = requestAnimationFrame(frame);
   }
   function unmount() { cancelAnimationFrame(raf); if (ui && ui.clock) clearInterval(ui.clock); ui = null; }
