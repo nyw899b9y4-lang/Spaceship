@@ -57,6 +57,9 @@
         }
         if (count > ch * 0.04) { skyline[x] = (low + 1) / ch; has[x] = 1; }
       }
+      // columns with only a sliver of sky (edges of window bars) would cut tall notches into the skyline
+      { const vals = []; for (let x = 0; x < cw; x++) if (has[x]) vals.push(skyline[x]); vals.sort((a, b) => a - b);
+        const med = vals.length ? vals[vals.length >> 1] : 0; for (let x = 0; x < cw; x++) if (has[x] && skyline[x] < med * 0.6) has[x] = 0; }
       // columns without sky (window bars, frame): interpolate between neighbours
       let lastX = -1;
       for (let x = 0; x < cw; x++) if (has[x]) {
