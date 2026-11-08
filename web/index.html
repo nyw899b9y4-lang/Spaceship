@@ -206,10 +206,12 @@
   <!-- STEP 5: launch view -->
   <section data-step="5" hidden>
     <div class="row between" style="margin-bottom:10px">
-      <h2 style="margin:0">🚀 Your spaceship</h2>
-      <button class="secondary small" data-back="4">← Back</button>
+      <h2 style="margin:0" id="ship-title">🚀 Your spaceship</h2>
+      <button class="secondary small" data-back="4" id="launch-back">← Back</button>
+      <a class="btn secondary small" id="build-own" href="./" hidden style="text-decoration:none;font-size:14px;padding:6px 10px">Build your own</a>
     </div>
     <div id="launch"></div>
+    <div id="ship-msg"></div>
     <p class="muted" style="font-size:13px">Left: your building as a ship – the glowing ports are your windows, the turrets point where they really look out. Tap a port (or a number) to switch the cockpit view.</p>
   </section>
 
@@ -679,13 +681,44 @@ $("send").addEventListener("click", async () => {
     const res = await fetch(`${cfg.SUPABASE_URL}/rest/v1/${cfg.APARTMENTS_TABLE || "apartments"}`, {
       method: "POST", headers: headers({ "Content-Type": "application/json", Prefer: "return=minimal" }), body: JSON.stringify(payload(id, paths)) });
     if (!res.ok) throw new Error("saving failed (" + res.status + ")");
-    notice(msg, "ok", "✓ Sent – your spaceship is registered. Thank you! Tap 🚀 Launch to see it.");
+    const link = location.origin + location.pathname + "?ship=" + id;
+    notice(msg, "ok", `✓ Sent – your spaceship is registered. Tap 🚀 Launch to see it.<br>Your spaceship link (keep it – it opens your ship any time):<br><a style="color:var(--ok)" href="${link}">${link}</a>`);
   } catch (e) {
     notice(msg, "err", "Could not send: " + esc(e.message) + ". Please try again."); $("send").disabled = false;
   }
 });
 
-show(1);
+// ---------------- open a saved spaceship: ?ship=<id> ----------------
+async function loadShip(id) {
+  show(1); notice($("addr-msg"), "info", "Loading spaceship…");
+  try {
+    if (!/^[0-9a-f-]{36}$/i.test(id)) throw new Error("invalid link");
+    const res = await fetch(`${cfg.SUPABASE_URL}/rest/v1/rpc/get_spaceship`, {
+      method: "POST", headers: headers({ "Content-Type": "application/json" }), body: JSON.stringify({ ship_id: id }) });
+    if (!res.ok) throw new Error("server answered " + res.status);
+    const txt = (await res.text()).trim();
+    const a = txt && txt !== "null" ? JSON.parse(txt) : null;
+    if (!a) throw new Error("no spaceship with this link");
+    const photoUrl = (p) => `${cfg.SUPABASE_URL}/storage/v1/object/public/${cfg.PHOTO_BUCKET}/${p.split("/").map(encodeURIComponent).join("/")}`;
+    state.address = { label: a.address, lat: a.lat, lon: a.lon, source: "saved" };
+    state.building = a.building ? { osm_id: a.building.osm_id, ring: a.building.ring, levels: a.building.levels, height: a.building.height_m } : null;
+    state.windows = (a.windows || []).map((w) => ({ id: "w" + w.n, label: w.label || "", lat: w.lat, lon: w.lon,
+      wall_azimuth_deg: w.wall_azimuth_deg, source: w.placed_by, capture: w.capture,
+      photo: w.photo_path ? { url: photoUrl(w.photo_path) } : null }));
+    state.loadedId = id;
+    $("floor").value = a.floor || 0;
+    $("addr-msg").className = ""; $("addr-msg").innerHTML = "";
+    $("launch-back").hidden = true; $("build-own").hidden = false;
+    $("ship-title").textContent = "🚀 Spaceship · " + (a.address || "").split(/\s\d{4}\s/)[0];
+    show(5);
+    const saved = new Date(a.created_at);
+    notice($("ship-msg"), "info", `Registered ${saved.toLocaleDateString()} · ${state.windows.length} window${state.windows.length === 1 ? "" : "s"} · floor ${a.floor || 0}`);
+  } catch (e) {
+    notice($("addr-msg"), "err", "Could not open this spaceship: " + esc(e.message) + ". You can build a new one below.");
+  }
+}
+const shipParam = new URLSearchParams(location.search).get("ship");
+if (shipParam && backendReady) loadShip(shipParam); else show(1);
 </script>
 </body>
 </html>

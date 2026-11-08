@@ -15,5 +15,6 @@ Turn an apartment into a spaceship: its real outline, its windows, and the view 
 
 - `web/` – the homepage (plain HTML/JS, Leaflet), published to GitHub Pages on every push
 - `web/config.js` – Supabase URL + publishable key (insert-only)
-- `backend/supabase-apartments.sql` – `apartments` table; photos in the private `photos` bucket under `<apartment id>/window-<n>.jpg`
+- `backend/supabase-apartments.sql` – `apartments` table; photos in the `photos` bucket under `<apartment id>/window-<n>.jpg`
+- `backend/supabase-viewer.sql` – `get_spaceship(id)`: opens one saved ship by its link `…/Spaceship/?ship=<id>` (table and bucket stay unlistable)
 - Imagery © swisstopo (CH) / © Esri (elsewhere, non-commercial) · Buildings & search © OpenStreetMap contributors
