@@ -155,6 +155,14 @@
     return P;
   }
 
+  // reusable offscreen canvases (creating full-screen canvases on every frame was slow)
+  const scratchC = {};
+  function scratch(name, w, h) {
+    let c = scratchC[name]; if (!c) c = scratchC[name] = document.createElement("canvas");
+    if (c.width !== w || c.height !== h) { c.width = w; c.height = h; } else c.getContext("2d").clearRect(0, 0, w, h);
+    return c;
+  }
+
   // ---------- historic figure layer (al-Ṣūfī) ----------
   const figImgs = {};
   function figImage(f, onload) {
@@ -194,7 +202,7 @@
   // view: { lat, lon, time, az, alt, fov, layers:{mw,grid,eq,ecl,cons,dso,labels}, photo:{img,az,el,hfov,vfov}, mode }
   function render(canvas, view) {
     const g = canvas.getContext("2d"), W = canvas.width, H = canvas.height, cat = SpaceshipSky.catalog();
-    const dpr = Math.min(2, window.devicePixelRatio || 1), L = view.layers || {};
+    const dpr = view.dpr || Math.min(2, window.devicePixelRatio || 1), L = view.layers || {}, fast = !!view.fast;
     g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, W, H);
     const cam = makeCam(view.az, view.alt, view.fov, W, H), proj = cam.project;
     const lst = SpaceshipSky.lstDeg(view.time, view.lon), HV = (ra, dec) => SpaceshipSky.horizVec(ra, dec, view.lat, lst);
@@ -215,7 +223,7 @@
     if (!cat) return info;
     // 2) Milky Way – soft, layered, slightly blurred (drawn at reduced resolution)
     if (L.mw !== false && cat.mw) {
-      const s = 0.35, mc = document.createElement("canvas"); mc.width = Math.ceil(W * s); mc.height = Math.ceil(H * s);
+      const s = 0.35, mc = scratch("mw", Math.ceil(W * s), Math.ceil(H * s));
       const m = mc.getContext("2d"); m.globalCompositeOperation = "lighter";
       cat.mw.forEach((lv) => {
         m.fillStyle = `rgba(${150 + lv.l * 12},${165 + lv.l * 10},${210 + lv.l * 6},${0.035 + lv.l * 0.012})`;
@@ -226,7 +234,9 @@
           if (ok > 2) m.fill();
         });
       });
-      g.save(); g.filter = `blur(${Math.round(6 * dpr)}px)`; g.globalCompositeOperation = "lighter"; g.drawImage(mc, 0, 0, W, H); g.restore();
+      // blur at the small size (cheap), then scale up
+      const mb = scratch("mwb", mc.width, mc.height), mbg = mb.getContext("2d"); mbg.filter = `blur(${Math.max(1, Math.round(2 * dpr * s * 3))}px)`; mbg.drawImage(mc, 0, 0); mbg.filter = "none";
+      g.save(); g.globalCompositeOperation = "lighter"; g.drawImage(mb, 0, 0, W, H); g.restore();
     }
     // 2b) al-Ṣūfī constellation drawings, fitted onto the real stars
     info.regions = [];
@@ -296,17 +306,17 @@
       boxes.forEach(({ b, poly }) => { const bc = b.boxColor === "cyan" ? null : b.color, col = bc === "gold" ? GO : bc === "violet" ? VI : CY, hi = col !== CY;
         g.lineWidth = (hi ? 2.4 : 1.6) * dpr; g.strokeStyle = col;
         g.fillStyle = bc === "gold" ? "rgba(245,197,66,.12)" : bc === "violet" ? "rgba(185,140,255,.12)" : "rgba(24,180,216,.08)";
-        if (hi) glow(col, 10); else g.shadowBlur = 0; polyPath(poly); g.fill(); g.stroke(); });
+        g.shadowBlur = 0; polyPath(poly); g.fill(); g.stroke(); });
       g.restore();
       // 1b) al-Haqʿa in detail: pink = the numeral alif (1), gold ring = its three stars on the drawing; and the three real stars
       boxes.filter((x) => x.b.alif).forEach((x) => {
         const b = x.b, ap = rectPoly(b.alif), c = toScr([b.ring[0], b.ring[1]]), e = toScr([b.ring[0] + b.ring[2], b.ring[1]]), rad = Math.hypot(e[0] - c[0], e[1] - c[1]);
         g.save(); g.lineWidth = 2.2 * dpr; g.strokeStyle = PK; g.fillStyle = "rgba(255,111,181,.12)"; polyPath(ap); g.fill(); g.stroke();
-        g.strokeStyle = GO; glow(GO, 12); g.beginPath(); g.arc(c[0], c[1], rad, 0, 2 * Math.PI); g.stroke(); g.restore();
+        g.strokeStyle = GO;  g.beginPath(); g.arc(c[0], c[1], rad, 0, 2 * Math.PI); g.stroke(); g.restore();
         x.extra = [ap, circlePoly(c, rad)];
         const pts = realPts(b.real);
         if (pts.length) {
-          g.save(); g.strokeStyle = GO; g.lineWidth = 1.6 * dpr; glow(GO, 8);
+          g.save(); g.strokeStyle = GO; g.lineWidth = 1.6 * dpr; 
           pts.forEach((p) => { g.beginPath(); g.arc(p[0], p[1], 7 * dpr, 0, 2 * Math.PI); g.stroke(); });
           label("al-Haqʿa · الهقعة", Math.max(...pts.map((p) => p[0])) + 12 * dpr, Math.min(...pts.map((p) => p[1])) - 6 * dpr, GO); g.restore();
         }
@@ -314,7 +324,7 @@
       // 1c) the Tresses (violet): the words on the page, the nine stars of the drawing joined by their curve, and the nine real stars
       boxes.filter((x) => x.b.parts).forEach((x) => {
         const P = x.b.parts; x.extra = x.extra || [];
-        g.save(); g.strokeStyle = VI; g.fillStyle = "rgba(185,140,255,.14)"; g.lineWidth = 2.2 * dpr; glow(VI, 10);
+        g.save(); g.strokeStyle = VI; g.fillStyle = "rgba(185,140,255,.14)"; g.lineWidth = 2.2 * dpr; 
         (P.rects || []).forEach((r) => { const pl = rectPoly(r); polyPath(pl); g.fill(); g.stroke(); x.extra.push(pl); });
         (P.polys || []).forEach((q) => { const pl = q.map(toScr); polyPath(pl); g.fill(); g.stroke(); x.extra.push(pl); });
         const dots = (P.dots || []).map(([dx, dy, r]) => { const c = toScr([dx, dy]), e = toScr([dx + r + 5, dy]); return [c, Math.hypot(e[0] - c[0], e[1] - c[1])]; });
@@ -323,7 +333,7 @@
         g.restore();
         const pts = realPts(x.b.real);
         if (pts.length > 1) {
-          g.save(); g.strokeStyle = VI; glow(VI, 8); g.lineWidth = 1.6 * dpr; g.globalAlpha = 0.9;
+          g.save(); g.strokeStyle = VI;  g.lineWidth = 1.6 * dpr; g.globalAlpha = 0.9;
           g.beginPath(); pts.forEach((p, k) => (k ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1]))); g.stroke();
           pts.forEach((p) => { g.beginPath(); g.arc(p[0], p[1], 6.5 * dpr, 0, 2 * Math.PI); g.stroke(); });
           const top = pts.reduce((a, p) => (p[1] < a[1] ? p : a), pts[0]);
@@ -432,7 +442,7 @@
     // 8) ground below the horizon. The horizon is a great circle, and stereographic projection maps it to a circle
     //    (exactly) – fill inside or outside that circle, whichever side the nadir is on. (A polygon of sampled points
     //    breaks when the view looks up with a narrow field.)
-    const fgC = document.createElement("canvas"); fgC.width = W; fgC.height = H; const fg = fgC.getContext("2d");
+    const fgC = scratch("fg", W, H), fg = fgC.getContext("2d");
     const raw = (v) => { const ct = dot(v, cam.c), f = 2 / Math.max(1e-6, 1 + ct); return [W / 2 + f * dot(v, cam.r) * cam.k, H / 2 - f * dot(v, cam.u) * cam.k]; };
     const hz3 = [raw(S(view.az, 0)), raw(S(view.az + 90, 0)), raw(S(view.az - 90, 0))];
     const circ = (() => { const [[ax, ay], [bx, by], [cx, cy]] = hz3, d = 2 * (ax * (by - cy) + bx * (cy - ay) + cx * (ay - by));
@@ -452,7 +462,7 @@
     // 9) window anchor: stylized lower part of the photo (or the whole photo in photo mode)
     if (view.photo && view.photo.img && view.photo.img.naturalWidth) {
       const src = view.mode === "photo" ? photoCanvas(view.photo.img) : foreground(view.photo.img, view.photo.el, view.photo.vfov).canvas;
-      const tmp = document.createElement("canvas"); tmp.width = W; tmp.height = H;
+      const tmp = scratch("tmp", W, H);
       drawPhoto(tmp.getContext("2d"), cam, src, view.photo, dpr);
       fg.drawImage(tmp, 0, 0);
     }

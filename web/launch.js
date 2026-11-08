@@ -723,7 +723,10 @@
     if (ui.inlay) ui.inlay.src = w.photo && w.photo.url ? w.photo.url : "";
   }
   let skyRaf = 0;
-  function requestSky() { if (!skyRaf) skyRaf = requestAnimationFrame(() => { skyRaf = 0; renderSky(); }); }
+  function requestSky(interactive = true) {
+    if (interactive && ui) { ui.interacting = true; clearTimeout(ui.sharpT); ui.sharpT = setTimeout(() => { if (ui) { ui.interacting = false; renderSky(); } }, 220); }
+    if (!skyRaf) skyRaf = requestAnimationFrame(() => { skyRaf = 0; renderSky(); });
+  }
   function renderSky() {
     if (!ui || !ui.photo || !ui.photo.naturalWidth) return;
     if (window.SpaceshipDome && ui.cam) return renderDome();
@@ -746,18 +749,18 @@
 
   function renderDome() {
     const cv = ui.view.querySelector(".ck-sky"); if (!cv) return;
-    const r = ui.view.getBoundingClientRect(), dpr = Math.min(2, window.devicePixelRatio || 1);
+    const r = ui.view.getBoundingClientRect(), dpr = ui.interacting ? 1 : Math.min(2, window.devicePixelRatio || 1);
     const Wc = Math.max(320, Math.round(r.width * dpr)), Hc = Math.max(200, Math.round(r.height * dpr));
     if (cv.width !== Wc || cv.height !== Hc) { cv.width = Wc; cv.height = Hc; }
     const w = cur.windows[active], v = viewOf(w), t = skyTime(), img = ui.photo, portrait = img.naturalHeight >= img.naturalWidth;
     const photo = v.az != null ? { img, az: v.az, el: v.el, hfov: portrait ? 53 : 67, vfov: portrait ? 67 : 53 } : null;
     const info = SpaceshipDome.render(cv, { lat: w.lat, lon: w.lon, time: t, az: ui.cam.az, alt: ui.cam.alt, fov: ui.cam.fov,
-      layers: ui.layers, photo, mode: ui.skyMode, onAsset: requestSky });
+      layers: ui.layers, photo, mode: ui.skyMode, onAsset: () => requestSky(false), dpr });
     ui.skyInfo = info; if (ui.pinned) repin(); else hideTip();
     // the real window photo fades in and out every ~10 s (toggle "Photo blend")
     const ph = ui.view.querySelector(".ck-ph");
     if (ph) {
-      const on = ui.layers.blend && ui.skyMode === "space" && photo;
+      const on = ui.layers.blend && ui.skyMode === "space" && photo && !ui.interacting;
       ph.classList.toggle("cycle", !!on);
       if (on) { if (ph.width !== Wc || ph.height !== Hc) { ph.width = Wc; ph.height = Hc; }
         SpaceshipDome.renderPhoto(ph, { az: ui.cam.az, alt: ui.cam.alt, fov: ui.cam.fov, photo }); }
@@ -1135,7 +1138,7 @@
           <div class="ck-layers">
             <button data-l="mw" class="on" title="Milky Way">Milky Way</button><button data-l="cons" class="on" title="Constellation lines">Lines</button>
             <button data-l="ecl" class="on" title="Ecliptic – path of Sun, Moon and planets">Ecliptic</button><button data-l="dso" class="on" title="Galaxies, nebulae, clusters (Messier)">Deep sky</button>
-            <button data-l="grid" title="Alt-azimuth grid">Alt/Az</button><button data-l="eq" title="Equatorial grid">RA/Dec</button><button data-l="labels" class="on" title="Names">Names</button><button data-l="blend" class="on" title="Blend the real window photo in and out every 10 s">Photo blend</button><button data-l="sufi" class="on" title="al-Ṣūfī's constellation drawing (Book of the Fixed Stars, c. 964)">al-Ṣūfī</button><button data-l="sufiSeg" class="on" title="Boxes around the Arabic writing, translation and phonetics, star-number tags">Segments</button><button class="ck-table-btn" type="button" title="al-Ṣūfī’s table of positions and magnitudes for the year 964">📜 al-Ṣūfī 964</button>
+            <button data-l="grid" title="Alt-azimuth grid">Alt/Az</button><button data-l="eq" title="Equatorial grid">RA/Dec</button><button data-l="labels" class="on" title="Names">Names</button><button data-l="blend" class="on" title="Blend the real window photo in and out every 10 s">Photo blend</button><button data-l="sufi" class="on" title="al-Ṣūfī's constellation drawing (Book of the Fixed Stars, c. 964)">al-Ṣūfī</button><button data-l="sufiSeg" title="Boxes around the Arabic writing, translation and phonetics, star-number tags">Segments</button><button class="ck-table-btn" type="button" title="al-Ṣūfī’s table of positions and magnitudes for the year 964">📜 al-Ṣūfī 964</button>
           </div>
           <div class="ck-idrow"><button class="ck-id" type="button" title="Show this ship's ID and link">🔑 Ship ID</button></div>
           <div class="ck-idbox" hidden></div>
@@ -1185,7 +1188,7 @@
       if (best >= 0) selectWindow(best, st);
     });
     ui.timeOffsetH = 0; ui.skyMode = "space";
-    ui.layers = { mw: true, cons: true, ecl: true, dso: true, grid: false, eq: false, labels: true, blend: true, sufi: true, sufiSeg: true, pos964: false };
+    ui.layers = { mw: true, cons: true, ecl: true, dso: true, grid: false, eq: false, labels: true, blend: true, sufi: true, sufiSeg: false, pos964: false };
     ui.inlay = q(".ck-inlay");
     // ship ID: to reopen this ship later (also on another device)
     q(".ck-id").addEventListener("click", () => {
