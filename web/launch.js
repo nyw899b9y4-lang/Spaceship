@@ -825,7 +825,7 @@
       return `<b style="color:${SpaceshipSky.bvColor(o.bv)}">★ ${title}</b><i>${sub}</i>
         <span>${t("Brightness {m} mag – {w}", { m: N(o.mag, 2), w: magWords(o.mag) })}</span>
         <span>${t("{c} star · type {t} · ~{k} K", { c: t(ph.colour), t: ph.cls, k: N(ph.tempK, 0) })}</span>
-        <span>${t("Now {pos}", { pos })}</span>${sufiHtml(o)}<small>HIP ${o.hip} · RA ${N(o.ra / 15, 2)} h · Dec ${N(o.dec, 1)}°</small>`;
+        <span>${t("Now {pos}", { pos })}</span>${window.SpaceshipBabylon ? SpaceshipBabylon.starHtml(o.hip) : ""}${sufiHtml(o)}<small>HIP ${o.hip} · RA ${N(o.ra / 15, 2)} h · Dec ${N(o.dec, 1)}°</small>`;
     }
     if (o.type === "dso") {
       return `<b style="color:#ffb4b4">◌ ${o.name}${o.alias ? " · " + t(o.alias) : ""}</b><i>${t(o.kind)}${o.desig ? " · " + o.desig : ""}</i>
@@ -1138,7 +1138,7 @@
           <div class="ck-layers">
             <button data-l="mw" class="on" title="Milky Way">Milky Way</button><button data-l="cons" class="on" title="Constellation lines">Lines</button>
             <button data-l="ecl" class="on" title="Ecliptic – path of Sun, Moon and planets">Ecliptic</button><button data-l="dso" class="on" title="Galaxies, nebulae, clusters (Messier)">Deep sky</button>
-            <button data-l="grid" title="Alt-azimuth grid">Alt/Az</button><button data-l="eq" title="Equatorial grid">RA/Dec</button><button data-l="labels" class="on" title="Names">Names</button><button data-l="blend" class="on" title="Blend the real window photo in and out every 10 s">Photo blend</button><button data-l="sufi" class="on" title="al-Ṣūfī's constellation drawing (Book of the Fixed Stars, c. 964)">al-Ṣūfī</button><button data-l="sufiSeg" title="Boxes around the Arabic writing, translation and phonetics, star-number tags">Segments</button><button class="ck-table-btn" type="button" title="al-Ṣūfī’s table of positions and magnitudes for the year 964">📜 al-Ṣūfī 964</button>
+            <button data-l="grid" title="Alt-azimuth grid">Alt/Az</button><button data-l="eq" title="Equatorial grid">RA/Dec</button><button data-l="labels" class="on" title="Names">Names</button><button data-l="blend" class="on" title="Blend the real window photo in and out every 10 s">Photo blend</button><button data-l="babylon" class="on" title="Layer 1 – Babylonian: SIPA.ZI.AN.NA, the Faithful Shepherd of Anu (MUL.APIN)">① SIPA.ZI.AN.NA</button><button data-l="sufi" class="on" title="Layer 2 – al-Ṣūfī's constellation drawing (Book of the Fixed Stars, c. 964)">② al-Ṣūfī</button><button data-l="sufiSeg" title="Boxes around the Arabic writing, translation and phonetics, star-number tags">Segments</button><button class="ck-table-btn" type="button" title="al-Ṣūfī’s table of positions and magnitudes for the year 964">📜 al-Ṣūfī 964</button>
           </div>
           <div class="ck-idrow"><button class="ck-id" type="button" title="Show this ship's ID and link">🔑 Ship ID</button></div>
           <div class="ck-idbox" hidden></div>
@@ -1188,7 +1188,7 @@
       if (best >= 0) selectWindow(best, st);
     });
     ui.timeOffsetH = 0; ui.skyMode = "space";
-    ui.layers = { mw: true, cons: true, ecl: true, dso: true, grid: false, eq: false, labels: true, blend: true, sufi: true, sufiSeg: false, pos964: false };
+    ui.layers = { mw: true, cons: true, ecl: true, dso: true, grid: false, eq: false, labels: true, blend: true, babylon: true, sufi: true, sufiSeg: false, pos964: false };
     ui.inlay = q(".ck-inlay");
     // ship ID: to reopen this ship later (also on another device)
     q(".ck-id").addEventListener("click", () => {

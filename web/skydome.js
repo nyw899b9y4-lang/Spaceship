@@ -238,8 +238,56 @@
       const mb = scratch("mwb", mc.width, mc.height), mbg = mb.getContext("2d"); mbg.filter = `blur(${Math.max(1, Math.round(2 * dpr * s * 3))}px)`; mbg.drawImage(mc, 0, 0); mbg.filter = "none";
       g.save(); g.globalCompositeOperation = "lighter"; g.drawImage(mb, 0, 0, W, H); g.restore();
     }
-    // 2b) al-Ṣūfī constellation drawings, fitted onto the real stars
+    // 2a) layer 1 – Babylonian SIPA.ZI.AN.NA (“Faithful Shepherd of Anu”), drawn under al-Ṣūfī
     info.regions = [];
+    const hipIdx = () => cat.hipIndex || (cat.hipIndex = Object.fromEntries(cat.stars.map((st) => [st[7], st])));
+    // belt numbers كو 26 · كز 27 · كح 28 left of the three stars, in the colour of the layer (dx: gap in css px)
+    const beltTags = (col, dx) => {
+      const BL = window.SpaceshipBabylon ? SpaceshipBabylon.BELT : { 26: [25930, "كو"], 27: [26311, "كز"], 28: [26727, "كح"] };
+      g.save(); g.textAlign = "center"; g.textBaseline = "middle";
+      Object.keys(BL).forEach((n) => { const st = hipIdx()[BL[n][0]]; if (!st) return; const p = proj(HV(st[0], st[1])); if (!onScreen(p)) return;
+        const y = p[1], ar = BL[n][1];
+        g.font = `600 ${Math.round(13 * dpr)}px "Noto Naskh Arabic","Geeza Pro","Arial",sans-serif`; const wa = g.measureText(ar).width;
+        g.font = `700 ${Math.round(10 * dpr)}px -apple-system,BlinkMacSystemFont,sans-serif`; const wn = g.measureText(n).width;
+        const w = wa + wn + 12 * dpr, h = 17 * dpr, cx = p[0] - dx * dpr - w / 2;   // left of the star (names are on the right)
+        g.fillStyle = "rgba(4,8,22,.72)"; rrect(cx - w / 2, y - h / 2, w, h, 4 * dpr); g.fill();
+        g.strokeStyle = col; g.lineWidth = 1 * dpr; g.stroke();
+        g.fillStyle = col; g.fillText(n, cx - w / 2 + 4 * dpr + wn / 2, y + 0.5 * dpr);
+        g.font = `600 ${Math.round(13 * dpr)}px "Noto Naskh Arabic","Geeza Pro","Arial",sans-serif`; g.fillText(ar, cx + w / 2 - 4 * dpr - wa / 2, y);
+      });
+      g.restore();
+    };
+    if (L.babylon && window.SpaceshipBabylon && cat) {
+      const BA = SpaceshipBabylon, idx = hipIdx(), P = {}, CL = BA.CLAY;
+      const pt = (hip) => { if (hip in P) return P[hip]; const st = idx[hip]; const p = st ? proj(HV(st[0], st[1])) : null; return (P[hip] = p); };
+      const hull = BA.HULL.map(pt);
+      if (hull.every(Boolean)) {
+        g.save(); g.beginPath(); hull.forEach((p, i) => (i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1]))); g.closePath();
+        g.fillStyle = "rgba(232,147,90,.06)"; g.fill(); g.setLineDash([2 * dpr, 5 * dpr]); g.strokeStyle = "rgba(232,147,90,.45)"; g.lineWidth = 1 * dpr; g.stroke(); g.restore();
+        info.regions.push({ poly: hull, o: { type: "region", id: "sipazianna", name: "SIPA.ZI.AN.NA", html: BA.info(),
+          x: hull.reduce((a, p) => a + p[0], 0) / hull.length, y: hull.reduce((a, p) => a + p[1], 0) / hull.length } });
+      }
+      g.save(); g.lineCap = "round"; g.strokeStyle = CL; g.globalAlpha = 0.85; g.lineWidth = 2.2 * dpr;
+      const seg = (list, dash) => { g.setLineDash(dash); g.beginPath();
+        list.forEach(([a, b]) => { const p = pt(a), q = pt(b); if (!p || !q || Math.hypot(p[0] - q[0], p[1] - q[1]) > W) return; g.moveTo(p[0], p[1]); g.lineTo(q[0], q[1]); }); g.stroke(); };
+      seg(BA.LINES, []); g.lineWidth = 1.4 * dpr; seg(BA.DASHED, [5 * dpr, 5 * dpr]); g.setLineDash([]);
+      // small clay dots on the figure's stars
+      Object.keys(BA.STARS).forEach((h) => { const p = pt(+h); if (!onScreen(p)) return; g.beginPath(); g.arc(p[0], p[1], 4.5 * dpr, 0, 2 * Math.PI); g.lineWidth = 1.2 * dpr; g.stroke(); });
+      g.restore();
+      // name: cuneiform + transliteration + translation, beside the shoulders
+      const a = pt(25336), b = pt(26207);
+      if (onScreen(a, 200) && b) {
+        const x = Math.min(a[0], b[0]) - 14 * dpr, y = Math.min(a[1], b[1]) - 30 * dpr;
+        g.save(); g.textAlign = "right"; g.textBaseline = "alphabetic"; g.fillStyle = CL; g.shadowColor = "rgba(0,0,0,.9)"; g.shadowBlur = 4 * dpr;
+        g.font = `${Math.round(20 * dpr)}px "Noto Sans Cuneiform","Segoe UI Historic",sans-serif`; g.fillText(BA.NAME.cun, x, y);
+        g.font = `700 ${Math.round(12 * dpr)}px -apple-system,BlinkMacSystemFont,sans-serif`; g.fillText(BA.NAME.sum, x, y + 16 * dpr);
+        g.font = `italic ${Math.round(11 * dpr)}px -apple-system,BlinkMacSystemFont,sans-serif`; g.fillText(BA.title(), x, y + 30 * dpr);
+        g.restore();
+        if (document.fonts && !render.cunReq) { render.cunReq = true; document.fonts.load(`20px "Noto Sans Cuneiform"`, BA.NAME.cun).then(() => view.onAsset && view.onAsset()).catch(() => {}); }
+      }
+      if (view.fov < 150) beltTags(CL, 10);
+    }
+    // 2b) layer 2 – al-Ṣūfī constellation drawings, fitted onto the real stars
     if (L.sufi && window.SpaceshipSufi && cat) {
       const byHip = cat.hipIndex || (cat.hipIndex = Object.fromEntries(cat.stars.map((st) => [st[7], st])));
       SpaceshipSufi.figures.forEach((f) => {
@@ -261,6 +309,7 @@
         });
         // segmentation of the page: boxes around the Arabic writing, number tags, callouts (translation + phonetics)
         if (f.ann && L.sufiSeg !== false) drawSegments(f, toScr);
+        else if (view.fov < 150) beltTags(SpaceshipSufi.COLORS.gold, L.babylon ? 60 : 10);   // keep the abjad belt numbers without the segments
         info.figure = { title: f.title, caption: SpaceshipSufi.L(f.caption) };
       });
     }
@@ -355,7 +404,7 @@
         [poly].concat(extra || []).forEach((pl) => info.regions.push({ poly: pl, o }));
       });
     }
-    info.regionAt = (x, y) => { const r = info.regions.find((rg) => pip([x, y], rg.poly)); return r ? r.o : null; };
+    info.regionAt = (x, y) => { const r = info.regions.slice().reverse().find((rg) => pip([x, y], rg.poly)); return r ? r.o : null; };   // top layer (al-Ṣūfī) first
     // helper: polyline through sky directions
     const path = (dirs, style, width, dash) => {
       g.save(); g.strokeStyle = style; g.lineWidth = width * dpr; if (dash) g.setLineDash(dash.map((d) => d * dpr));

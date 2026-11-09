@@ -105,6 +105,8 @@
     "SCANNING {name} + 200 M": "SCANNE {name} + 200 M", "COMPOSING SHIP DNA…": "KOMPONIERE SCHIFFS-DNA…", "TARGET LOCK: {name}": "ZIEL ERFASST: {name}",
     "CONVERTING STRUCTURE…": "WANDLE STRUKTUR UM…", "FITTING MODULES": "MONTIERE MODULE", "SYSTEMS ONLINE": "SYSTEME BEREIT", "LIFT-OFF": "ABHEBEN",
     // star info
+    "Layer 1 – Babylonian: SIPA.ZI.AN.NA, the Faithful Shepherd of Anu (MUL.APIN)": "Layer 1 – babylonisch: SIPA.ZI.AN.NA, der treue Hirte des Anu (MUL.APIN)",
+    "Layer 2 – al-Ṣūfī's constellation drawing (Book of the Fixed Stars, c. 964)": "Layer 2 – al-Ṣūfīs Sternbildzeichnung (Buch der Fixsterne, um 964)",
     "{a}° above the horizon": "{a}° über dem Horizont", "below the horizon": "unter dem Horizont", "Now {pos}": "Jetzt {pos}",
     "Brightness {m} mag – {w}": "Helligkeit {m} mag – {w}", "one of the brightest objects in the sky": "eines der hellsten Objekte am Himmel",
     "one of the brightest stars": "einer der hellsten Sterne", "very bright": "sehr hell", "clearly visible": "gut sichtbar",
