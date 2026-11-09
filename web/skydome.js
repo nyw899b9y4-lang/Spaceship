@@ -243,14 +243,12 @@
     const hipIdx = () => cat.hipIndex || (cat.hipIndex = Object.fromEntries(cat.stars.map((st) => [st[7], st])));
     // belt numbers كو 26 · كز 27 · كح 28 left of the three stars, in the colour of the layer (dx: gap in css px)
     // belt numbers كو 26 · كز 27 · كح 28 left of the three stars, in the colour of the layer (dx: gap in css px).
-    // When the three stars sit close together (wide view / small screen) the labels fan out into a column with leader lines;
-    // with both layers on, one column then serves both (Arabic in al-Ṣūfī gold, digits in Babylonian clay).
+    // When the three stars sit close together (wide view / small screen) the labels fan out into a column with leader lines.
     const beltTags = (col, dx, col2) => {
       const BL = window.SpaceshipBabylon ? SpaceshipBabylon.BELT : { 26: [25930, "كو"], 27: [26311, "كز"], 28: [26727, "كح"] };
       const pts = Object.keys(BL).map((n) => { const st = hipIdx()[BL[n][0]]; return [n, st && proj(HV(st[0], st[1]))]; });
       if (pts.some(([, p]) => !onScreen(p))) return;
       const span = Math.hypot(pts[0][1][0] - pts[2][1][0], pts[0][1][1] - pts[2][1][1]) / dpr, crowded = span < 110;
-      if (crowded && col2 === null) return;                        // the other layer's column already shows them
       const AR = `600 ${Math.round(13 * dpr)}px "Noto Naskh Arabic","Geeza Pro","Arial",sans-serif`, NU = `700 ${Math.round(10 * dpr)}px -apple-system,BlinkMacSystemFont,sans-serif`;
       const minX = Math.min(...pts.map(([, p]) => p[0])), midY = pts.reduce((s2, [, p]) => s2 + p[1], 0) / 3;
       g.save(); g.textAlign = "center"; g.textBaseline = "middle";
@@ -262,7 +260,7 @@
         g.fillStyle = "rgba(4,8,22,.72)"; rrect(cx - w / 2, y - h / 2, w, h, 4 * dpr); g.fill();
         g.strokeStyle = col; g.lineWidth = 1 * dpr; g.stroke();
         g.font = NU; g.fillStyle = col; g.fillText(n, cx - w / 2 + 4 * dpr + wn / 2, y + 0.5 * dpr);
-        g.font = AR; g.fillStyle = (crowded && col2) || col; g.fillText(ar, cx + w / 2 - 4 * dpr - wa / 2, y);
+        g.font = AR; g.fillStyle = col2 || col; g.fillText(ar, cx + w / 2 - 4 * dpr - wa / 2, y);
       });
       g.restore();
     };
@@ -294,7 +292,6 @@
         g.restore();
         if (document.fonts && !render.cunReq) { render.cunReq = true; document.fonts.load(`20px "Noto Sans Cuneiform"`, BA.NAME.cun).then(() => view.onAsset && view.onAsset()).catch(() => {}); }
       }
-      if (view.fov < 150) beltTags(CL, 10, L.sufi ? SpaceshipSufi.COLORS.gold : undefined);
     }
     // 2b) layer 2 – al-Ṣūfī constellation drawings, fitted onto the real stars
     if (L.sufi && window.SpaceshipSufi && cat) {
@@ -318,10 +315,11 @@
         });
         // segmentation of the page: boxes around the Arabic writing, number tags, callouts (translation + phonetics)
         if (f.ann && L.sufiSeg !== false) drawSegments(f, toScr);
-        else if (view.fov < 150) beltTags(SpaceshipSufi.COLORS.gold, L.babylon ? 60 : 10, L.babylon ? null : undefined);   // keep the abjad belt numbers without the segments
         info.figure = { title: f.title, caption: SpaceshipSufi.L(f.caption) };
       });
     }
+    // one set of belt numbers for both layers – the same look whichever layer is on, never twice
+    if ((L.babylon || L.sufi) && view.fov < 150 && window.SpaceshipSufi) beltTags("#efe6d2", 10, SpaceshipSufi.COLORS.gold);
     // al-Ṣūfī's positions for 964, carried to J2000 by precession – shows how far each catalogued place is from the real star
     if (L.pos964 && window.SpaceshipSufi && cat) {
       const T = SpaceshipSufi.table, byHip = cat.hipIndex || (cat.hipIndex = Object.fromEntries(cat.stars.map((st) => [st[7], st])));
@@ -400,7 +398,8 @@
       });
       // 2) number tags (abjad → digits), screen-aligned so they stay readable on the mirrored page; 17–25 in violet
       g.save(); g.font = SANS(700, 10.5); g.textAlign = "center"; g.textBaseline = "middle";
-      A.tags.forEach(([n, x, y]) => { const p = toScr([x, y]); if (!onScreen(p)) return; const t = String(n), w = g.measureText(t).width + 8 * dpr, h = 15 * dpr;
+      A.tags.forEach(([n, x, y]) => { if (n >= 26 && n <= 28) return;   // belt: shown once by beltTags
+        const p = toScr([x, y]); if (!onScreen(p)) return; const t = String(n), w = g.measureText(t).width + 8 * dpr, h = 15 * dpr;
         g.fillStyle = n >= 17 && n <= 25 ? VI : CY; rrect(p[0] - w / 2, p[1] - h / 2, w, h, 4 * dpr); g.fill(); g.fillStyle = "#fff"; g.fillText(t, p[0], p[1] + 0.5 * dpr); });
       g.restore();
       // tap a box → its Arabic, translation and phonetics (and for al-Haqʿa: its names with their meanings)
