@@ -242,18 +242,27 @@
     info.regions = [];
     const hipIdx = () => cat.hipIndex || (cat.hipIndex = Object.fromEntries(cat.stars.map((st) => [st[7], st])));
     // belt numbers كو 26 · كز 27 · كح 28 left of the three stars, in the colour of the layer (dx: gap in css px)
-    const beltTags = (col, dx) => {
+    // belt numbers كو 26 · كز 27 · كح 28 left of the three stars, in the colour of the layer (dx: gap in css px).
+    // When the three stars sit close together (wide view / small screen) the labels fan out into a column with leader lines;
+    // with both layers on, one column then serves both (Arabic in al-Ṣūfī gold, digits in Babylonian clay).
+    const beltTags = (col, dx, col2) => {
       const BL = window.SpaceshipBabylon ? SpaceshipBabylon.BELT : { 26: [25930, "كو"], 27: [26311, "كز"], 28: [26727, "كح"] };
+      const pts = Object.keys(BL).map((n) => { const st = hipIdx()[BL[n][0]]; return [n, st && proj(HV(st[0], st[1]))]; });
+      if (pts.some(([, p]) => !onScreen(p))) return;
+      const span = Math.hypot(pts[0][1][0] - pts[2][1][0], pts[0][1][1] - pts[2][1][1]) / dpr, crowded = span < 110;
+      if (crowded && col2 === null) return;                        // the other layer's column already shows them
+      const AR = `600 ${Math.round(13 * dpr)}px "Noto Naskh Arabic","Geeza Pro","Arial",sans-serif`, NU = `700 ${Math.round(10 * dpr)}px -apple-system,BlinkMacSystemFont,sans-serif`;
+      const minX = Math.min(...pts.map(([, p]) => p[0])), midY = pts.reduce((s2, [, p]) => s2 + p[1], 0) / 3;
       g.save(); g.textAlign = "center"; g.textBaseline = "middle";
-      Object.keys(BL).forEach((n) => { const st = hipIdx()[BL[n][0]]; if (!st) return; const p = proj(HV(st[0], st[1])); if (!onScreen(p)) return;
-        const y = p[1], ar = BL[n][1];
-        g.font = `600 ${Math.round(13 * dpr)}px "Noto Naskh Arabic","Geeza Pro","Arial",sans-serif`; const wa = g.measureText(ar).width;
-        g.font = `700 ${Math.round(10 * dpr)}px -apple-system,BlinkMacSystemFont,sans-serif`; const wn = g.measureText(n).width;
-        const w = wa + wn + 12 * dpr, h = 17 * dpr, cx = p[0] - dx * dpr - w / 2;   // left of the star (names are on the right)
+      pts.forEach(([n, p], i) => {
+        const ar = BL[n][1]; g.font = AR; const wa = g.measureText(ar).width; g.font = NU; const wn = g.measureText(n).width;
+        const w = wa + wn + 12 * dpr, h = 17 * dpr;
+        const cx = crowded ? minX - (dx + 26) * dpr - w / 2 : p[0] - dx * dpr - w / 2, y = crowded ? midY + (i - 1) * 20 * dpr : p[1];
+        if (crowded) { g.strokeStyle = col; g.globalAlpha = 0.6; g.lineWidth = 1 * dpr; g.beginPath(); g.moveTo(cx + w / 2, y); g.lineTo(p[0] - 4 * dpr, p[1]); g.stroke(); g.globalAlpha = 1; }
         g.fillStyle = "rgba(4,8,22,.72)"; rrect(cx - w / 2, y - h / 2, w, h, 4 * dpr); g.fill();
         g.strokeStyle = col; g.lineWidth = 1 * dpr; g.stroke();
-        g.fillStyle = col; g.fillText(n, cx - w / 2 + 4 * dpr + wn / 2, y + 0.5 * dpr);
-        g.font = `600 ${Math.round(13 * dpr)}px "Noto Naskh Arabic","Geeza Pro","Arial",sans-serif`; g.fillText(ar, cx + w / 2 - 4 * dpr - wa / 2, y);
+        g.font = NU; g.fillStyle = col; g.fillText(n, cx - w / 2 + 4 * dpr + wn / 2, y + 0.5 * dpr);
+        g.font = AR; g.fillStyle = (crowded && col2) || col; g.fillText(ar, cx + w / 2 - 4 * dpr - wa / 2, y);
       });
       g.restore();
     };
@@ -285,7 +294,7 @@
         g.restore();
         if (document.fonts && !render.cunReq) { render.cunReq = true; document.fonts.load(`20px "Noto Sans Cuneiform"`, BA.NAME.cun).then(() => view.onAsset && view.onAsset()).catch(() => {}); }
       }
-      if (view.fov < 150) beltTags(CL, 10);
+      if (view.fov < 150) beltTags(CL, 10, L.sufi ? SpaceshipSufi.COLORS.gold : undefined);
     }
     // 2b) layer 2 – al-Ṣūfī constellation drawings, fitted onto the real stars
     if (L.sufi && window.SpaceshipSufi && cat) {
@@ -309,7 +318,7 @@
         });
         // segmentation of the page: boxes around the Arabic writing, number tags, callouts (translation + phonetics)
         if (f.ann && L.sufiSeg !== false) drawSegments(f, toScr);
-        else if (view.fov < 150) beltTags(SpaceshipSufi.COLORS.gold, L.babylon ? 60 : 10);   // keep the abjad belt numbers without the segments
+        else if (view.fov < 150) beltTags(SpaceshipSufi.COLORS.gold, L.babylon ? 60 : 10, L.babylon ? null : undefined);   // keep the abjad belt numbers without the segments
         info.figure = { title: f.title, caption: SpaceshipSufi.L(f.caption) };
       });
     }
